@@ -17,6 +17,8 @@ type ChatResponse = {
   staff_name?: string;
   staff_email?: string;
   staff_domain?: string;
+  staff_title?: string;
+  staff_department?: string;
   similarity_score?: number;
 };
 
