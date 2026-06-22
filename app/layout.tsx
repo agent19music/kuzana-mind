@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
-import { ThirdwebProvider } from "thirdweb/react";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -22,7 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={manrope.variable}>
       <body>
-        <ThirdwebProvider>{children}</ThirdwebProvider>
+        {children}
       </body>
     </html>
   );

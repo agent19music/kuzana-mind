@@ -3,8 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ConnectButton } from "thirdweb/react";
-import { client } from "@/lib/thirdweb";
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
@@ -100,35 +98,25 @@ export default function Nav() {
             Ask a question
           </Link>
 
-          <ConnectButton
-            client={client}
-            connectButton={{
-              label: "Sign in",
-              style: {
-                height: 44,
-                borderRadius: 9999,
-                padding: "0 24px",
-                fontSize: 14,
-                fontWeight: 500,
-                background: scrolled ? "var(--inset-surface)" : "rgba(255,255,255,0.12)",
-                color: scrolled ? "var(--foreground)" : "#ffffff",
-                border: scrolled ? "1px solid var(--border-strong)" : "1px solid rgba(255,255,255,0.3)",
-                transition: "all 200ms ease-out",
-              },
+          <Link
+            href="/chat"
+            style={{
+              textDecoration: "none",
+              height: 44,
+              display: "inline-flex",
+              alignItems: "center",
+              borderRadius: 9999,
+              padding: "0 24px",
+              fontSize: 14,
+              fontWeight: 500,
+              transition: "all 200ms ease-out",
+              background: scrolled ? "var(--inset-surface)" : "rgba(255,255,255,0.12)",
+              color: scrolled ? "var(--foreground)" : "#ffffff",
+              border: scrolled ? "1px solid var(--border-strong)" : "1px solid rgba(255,255,255,0.3)",
             }}
-            detailsButton={{
-              style: {
-                height: 44,
-                borderRadius: 9999,
-                padding: "0 20px",
-                fontSize: 14,
-                fontWeight: 500,
-                background: scrolled ? "var(--inset-surface)" : "rgba(255,255,255,0.12)",
-                color: scrolled ? "var(--foreground)" : "#ffffff",
-                border: scrolled ? "1px solid var(--border-strong)" : "1px solid rgba(255,255,255,0.3)",
-              },
-            }}
-          />
+          >
+            Sign in
+          </Link>
         </div>
       </div>
     </header>
