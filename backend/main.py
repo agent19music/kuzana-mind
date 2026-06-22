@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -18,9 +19,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Kuzana Brain API", lifespan=lifespan)
 
+_cors_origins = os.getenv("CORS_ORIGINS", "*")
+_allow_origins = [o.strip() for o in _cors_origins.split(",")] if _cors_origins != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
