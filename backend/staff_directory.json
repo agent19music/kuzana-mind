@@ -1,0 +1,112 @@
+[
+  {
+    "name": "Chidi Okeke",
+    "email": "chidi.okeke@kuzana.co",
+    "title": "Chief Executive Officer",
+    "department": "Executive",
+    "reports_to": null,
+    "domain": "Executive Leadership",
+    "topics": ["company strategy", "vision", "executive decisions", "partnerships", "fundraising", "board"],
+    "reason": "Chidi sets company direction and owns all executive-level decisions."
+  },
+  {
+    "name": "Siyanda Nkosi",
+    "email": "siyanda.nkosi@kuzana.co",
+    "title": "Chief Technology Officer",
+    "department": "Engineering",
+    "reports_to": "Chidi Okeke",
+    "domain": "Engineering & Technology",
+    "topics": ["engineering", "architecture", "technical roadmap", "code review", "system design", "infrastructure", "tech stack"],
+    "reason": "Siyanda owns the technical strategy and engineering organisation."
+  },
+  {
+    "name": "Amara Osei",
+    "email": "amara.osei@kuzana.co",
+    "title": "Chief People Officer",
+    "department": "People & HR",
+    "reports_to": "Chidi Okeke",
+    "domain": "HR & People Operations",
+    "topics": ["onboarding", "leave policy", "performance reviews", "contracts", "offboarding", "hiring", "culture", "benefits", "payroll", "probation"],
+    "reason": "Amara owns all HR processes, people policy documentation, and talent operations."
+  },
+  {
+    "name": "David Kariuki",
+    "email": "david.kariuki@kuzana.co",
+    "title": "Chief Financial Officer",
+    "department": "Finance",
+    "reports_to": "Chidi Okeke",
+    "domain": "Finance & Billing",
+    "topics": ["invoicing", "expense claims", "billing", "payments", "budgets", "financial reports", "reimbursements", "tax", "audit", "procurement"],
+    "reason": "David manages client billing workflows, internal finance operations, and expense processes."
+  },
+  {
+    "name": "Fatima Al-Hassan",
+    "email": "fatima.alhassan@kuzana.co",
+    "title": "VP of Sales",
+    "department": "Sales",
+    "reports_to": "Chidi Okeke",
+    "domain": "Sales & Business Development",
+    "topics": ["sales", "proposals", "pricing", "deals", "pipeline", "revenue", "prospects", "demos", "crm"],
+    "reason": "Fatima owns the revenue pipeline and all inbound/outbound sales activities."
+  },
+  {
+    "name": "Kofi Mensah",
+    "email": "kofi.mensah@kuzana.co",
+    "title": "Head of Client Success",
+    "department": "Client Success",
+    "reports_to": "Fatima Al-Hassan",
+    "domain": "Client Success",
+    "topics": ["client onboarding", "account management", "escalations", "sla", "client communications", "renewal", "churn", "nps", "satisfaction"],
+    "reason": "Kofi owns the client relationship lifecycle from onboarding to renewal."
+  },
+  {
+    "name": "Zanele Mokoena",
+    "email": "zanele.mokoena@kuzana.co",
+    "title": "General Counsel",
+    "department": "Legal",
+    "reports_to": "Chidi Okeke",
+    "domain": "Legal & Compliance",
+    "topics": ["contracts", "nda", "gdpr", "compliance", "legal review", "data protection", "ip", "intellectual property", "dispute", "regulatory"],
+    "reason": "Zanele reviews all legal documentation and manages compliance obligations."
+  },
+  {
+    "name": "Naledi Dlamini",
+    "email": "naledi.dlamini@kuzana.co",
+    "title": "IT Manager",
+    "department": "IT & Systems",
+    "reports_to": "Siyanda Nkosi",
+    "domain": "IT & Systems",
+    "topics": ["laptop setup", "tool access", "vpn", "software licenses", "it support", "passwords", "hardware", "equipment", "2fa", "security keys"],
+    "reason": "Naledi handles all IT setup, access provisioning, and tool administration."
+  },
+  {
+    "name": "Tariq Osman",
+    "email": "tariq.osman@kuzana.co",
+    "title": "Senior Software Engineer",
+    "department": "Engineering",
+    "reports_to": "Siyanda Nkosi",
+    "domain": "Backend Engineering",
+    "topics": ["backend", "api", "database", "deployment", "bugs", "backend development", "microservices"],
+    "reason": "Tariq leads backend systems and is the point of contact for API and database issues."
+  },
+  {
+    "name": "Amina Diallo",
+    "email": "amina.diallo@kuzana.co",
+    "title": "Product Designer",
+    "department": "Design",
+    "reports_to": "Siyanda Nkosi",
+    "domain": "Design & UX",
+    "topics": ["design", "ux", "ui", "figma", "prototypes", "user research", "wireframes", "branding", "accessibility"],
+    "reason": "Amina owns product design, UX research, and brand consistency."
+  },
+  {
+    "name": "Blessing Okafor",
+    "email": "blessing.okafor@kuzana.co",
+    "title": "Marketing Manager",
+    "department": "Marketing",
+    "reports_to": "Chidi Okeke",
+    "domain": "Marketing & Communications",
+    "topics": ["marketing", "social media", "content", "campaigns", "press", "communications", "blog", "newsletter", "events", "brand"],
+    "reason": "Blessing owns all marketing campaigns, content strategy, and external communications."
+  }
+]

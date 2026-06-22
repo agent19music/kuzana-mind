@@ -1,0 +1,35 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: kuzana_brain
+      POSTGRES_USER: kuzana
+      POSTGRES_PASSWORD: kuzana
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kuzana -d kuzana_brain"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://kuzana:kuzana@db:5432/kuzana_brain
+      # --- Uncomment these when switching to real Drive ---
+      # USE_MOCK: "false"
+      # DRIVE_FOLDER_ID: ${DRIVE_FOLDER_ID}
+      # GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON}
+
+volumes:
+  pgdata:
