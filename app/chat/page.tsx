@@ -14,6 +14,7 @@ type ChatResponse = {
   type: "document" | "staff_fallback";
   source_title?: string;
   source_doc_id?: string;
+  source_type?: "google_docs" | "notion" | "mock";
   staff_name?: string;
   staff_email?: string;
   staff_domain?: string;
@@ -300,6 +301,7 @@ export default function ChatPage() {
                       answer={msg.data.answer}
                       sourceTitle={msg.data.source_title}
                       sourceDocId={msg.data.source_doc_id}
+                      sourceType={msg.data.source_type}
                       similarityScore={msg.data.similarity_score}
                     />
                   ) : (

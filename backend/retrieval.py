@@ -38,6 +38,7 @@ async def similarity_search(query_embedding: list[float], top_k: int = 5) -> lis
             title,
             chunk_text,
             metadata,
+            source_type,
             1 - (embedding <=> cast(:embedding AS vector)) AS similarity_score
         FROM documents
         ORDER BY embedding <=> cast(:embedding AS vector)
@@ -83,6 +84,7 @@ async def answer_query(query: str) -> dict:
             "type": "document",
             "source_title": best["title"],
             "source_doc_id": best["doc_id"],
+            "source_type": best.get("source_type", "mock"),
             "similarity_score": round(best["similarity_score"], 4),
         }
 

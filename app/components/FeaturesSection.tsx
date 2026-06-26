@@ -3,6 +3,53 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
+// Animation for "Connect anything" — logos swapping in
+function ConnectAnimation() {
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActive((prev) => (prev + 1) % 3);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const sources = [
+    { label: "Google Docs", color: "#4285F4" },
+    { label: "Notion", color: "#000000" },
+    { label: "Shared Drive", color: "#34A853" },
+  ];
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3">
+      {sources.map((s, i) => (
+        <motion.div
+          key={s.label}
+          animate={{
+            opacity: i === active ? 1 : 0.25,
+            scale: i === active ? 1.05 : 0.95,
+          }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          style={{
+            background: i === active ? s.color : "var(--inset-surface)",
+            borderRadius: "var(--radius-md)",
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 600,
+            color: i === active ? "#fff" : "var(--foreground-subtle)",
+            fontFamily: "var(--font-sans)",
+            textAlign: "center",
+            width: "100%",
+            maxWidth: 140,
+          }}
+        >
+          {s.label}
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
 // Animation for "Instant answers" — simulates a query being typed and answered
 function SearchAnimation() {
   const [step, setStep] = useState(0);
@@ -15,7 +62,7 @@ function SearchAnimation() {
   }, []);
 
   const queries = ["Who owns onboarding?", "Q3 budget process?", "Leave policy?"];
-  const answers = ["Ask Amara →", "See Finance doc →", "See HR Policy →"];
+  const answers = ["Ask Amara", "See Finance doc", "See HR Policy"];
 
   return (
     <div className="flex flex-col justify-center h-full gap-3">
@@ -58,52 +105,15 @@ function SearchAnimation() {
   );
 }
 
-// Animation for "Smart fallback" — grid cards rearranging like a layout shift
-function FallbackAnimation() {
-  const [layout, setLayout] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLayout((prev) => (prev + 1) % 3);
-    }, 2500);
-    return () => clearInterval(interval);
-  }, []);
-
-  const layouts = [
-    "grid-cols-2 grid-rows-2",
-    "grid-cols-3 grid-rows-1",
-    "grid-cols-1 grid-rows-3",
-  ];
-
-  return (
-    <div className="h-full p-4 flex items-center justify-center">
-      <motion.div
-        className={`grid ${layouts[layout]} gap-2 w-full max-w-[140px]`}
-        layout
-      >
-        {[1, 2, 3].map((i) => (
-          <motion.div
-            key={i}
-            className="rounded-md min-h-[30px]"
-            style={{ background: "var(--brand-olive)", opacity: 0.2 + i * 0.2 }}
-            layout
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          />
-        ))}
-      </motion.div>
-    </div>
-  );
-}
-
 // Animation for "Always current" — sync progress bar cycling
 function SyncAnimation() {
   const [progress, setProgress] = useState(0);
-  const [label, setLabel] = useState("Syncing…");
+  const [label, setLabel] = useState("Syncing...");
 
   useEffect(() => {
     let p = 0;
     setProgress(0);
-    setLabel("Syncing…");
+    setLabel("Syncing...");
 
     const tick = setInterval(() => {
       p += 4;
@@ -113,7 +123,7 @@ function SyncAnimation() {
         clearInterval(tick);
         setTimeout(() => {
           setProgress(0);
-          setLabel("Syncing…");
+          setLabel("Syncing...");
         }, 1800);
       }
     }, 80);
@@ -125,7 +135,7 @@ function SyncAnimation() {
   useEffect(() => {
     const cycle = setInterval(() => {
       setProgress(0);
-      setLabel("Syncing…");
+      setLabel("Syncing...");
 
       let p = 0;
       const tick = setInterval(() => {
@@ -183,7 +193,7 @@ function SyncAnimation() {
           fontFamily: "var(--font-sans)",
         }}
       >
-        Weekly auto-sync
+        Auto-sync weekly
       </span>
     </div>
   );
@@ -191,19 +201,19 @@ function SyncAnimation() {
 
 const cards = [
   {
-    animation: <SearchAnimation />,
-    title: "Instant answers",
-    body: "Ask in plain language. Brain searches every indexed doc and returns the most relevant passage with a direct link to the source.",
+    animation: <ConnectAnimation />,
+    title: "Connect your tools",
+    body: "Plug in Google Workspace, Notion, or both. Your docs, wikis, and processes — all indexed in one place for your entire organization.",
   },
   {
-    animation: <FallbackAnimation />,
-    title: "Smart fallback",
-    body: "When confidence is low, Brain never guesses. It finds the team member who owns that domain and tells you exactly why.",
+    animation: <SearchAnimation />,
+    title: "Instant answers",
+    body: "Your team asks in plain language. Kuzana Mind surfaces the exact passage from the right document — or routes to the person who knows.",
   },
   {
     animation: <SyncAnimation />,
     title: "Always current",
-    body: "A weekly sync re-indexes your Shared Drive automatically. No uploads, no maintenance — always the latest version.",
+    body: "Automatic weekly sync keeps your knowledge base fresh. No manual uploads, no stale answers. Edit a doc and it's reflected everywhere.",
   },
 ];
 
@@ -233,12 +243,29 @@ export default function FeaturesSection() {
             letterSpacing: "0.12em",
             textTransform: "uppercase",
             color: "var(--foreground-subtle)",
-            marginBottom: "var(--space-8)",
+            marginBottom: "var(--space-3)",
             fontFamily: "var(--font-sans)",
           }}
         >
           Features
         </motion.p>
+
+        <motion.h2
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          style={{
+            fontSize: "clamp(28px, 3.5vw, 40px)",
+            fontWeight: 600,
+            letterSpacing: "-0.02em",
+            lineHeight: 1.2,
+            color: "var(--foreground)",
+            marginBottom: "var(--space-12)",
+            maxWidth: 500,
+          }}
+        >
+          Everything your team needs to stop searching and start knowing.
+        </motion.h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: "var(--space-6)" }}>
           {cards.map((card, i) => (

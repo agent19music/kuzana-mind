@@ -1,24 +1,25 @@
 const steps = [
   {
     n: "01",
-    label: "You ask",
-    body: "Type your question in plain language — no keywords, no filters.",
+    label: "Connect your sources",
+    body: "Link your Google Workspace, Notion, or both. We handle permissions and never store raw credentials.",
   },
   {
     n: "02",
-    label: "Brain searches",
-    body: "Semantic search across all indexed documentation, ranked by relevance.",
+    label: "We index everything",
+    body: "Your documents are chunked, embedded, and indexed automatically. New content syncs weekly — zero maintenance.",
   },
   {
     n: "03",
-    label: "You get an answer",
-    body: "The exact passage and source link — or the right person to contact.",
+    label: "Your team asks",
+    body: "Anyone on the team can ask in plain language and get the exact answer with a link to the source — or the right person to talk to.",
   },
 ];
 
 export default function HowItWorks() {
   return (
     <section
+      id="how-it-works"
       style={{
         background: "var(--background)",
         borderTop: "1px solid var(--border-strong)",
@@ -42,7 +43,7 @@ export default function HowItWorks() {
             marginBottom: "var(--space-12)",
           }}
         >
-          Three steps.
+          Up and running in minutes.
         </h2>
 
         <div

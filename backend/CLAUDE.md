@@ -30,23 +30,29 @@ backend/
 
 ---
 
-## Ingestion Modes (priority order)
+## Ingestion Modes (additive, multi-source)
 
-`ingest.py::load_documents()` resolves source in this order:
+`ingest.py::load_documents()` loads from **all configured sources** (not exclusive — they stack):
 
 1. **Public Google Docs** (`PUBLIC_DOC_IDS` env var set)
    - Fetches via `https://docs.google.com/document/d/{ID}/export?format=txt`
    - No auth required — doc must be shared as "Anyone with the link can view"
    - Accepts comma-separated IDs or full URLs
-   - If `USE_MOCK=true` is also set, sample_docs/ are **augmented** on top
 
-2. **Local mock files** (`USE_MOCK=true`, no `PUBLIC_DOC_IDS`)
-   - Reads `sample_docs/*.md`
-   - Default for local dev
+2. **Notion** (`NOTION_API_KEY` + `NOTION_ROOT_PAGE_ID` set)
+   - Fetches child pages under the root page via Notion API
+   - Converts Notion blocks to markdown for chunking
+   - Requires an internal integration shared with the target pages
 
-3. **Google Drive (service account)** (`USE_MOCK=false`, no `PUBLIC_DOC_IDS`)
-   - Requires `DRIVE_FOLDER_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON` env vars
+3. **Google Drive (service account)** (`DRIVE_FOLDER_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON` set)
+   - Requires service account with Viewer on the target Shared Drive
    - Post-MVP production path
+
+4. **Local mock files** (`USE_MOCK=true`)
+   - Reads `sample_docs/*.md`
+   - Default for local dev, can run alongside other sources
+
+All sources contribute to the same vector store — queries search across everything.
 
 Trigger ingestion: `POST /ingest` (no body). Call this once after startup.
 
@@ -73,6 +79,8 @@ Trigger ingestion: `POST /ingest` (no body). Call this once after startup.
 | `USE_MOCK` | No | `true` | Load from `sample_docs/` |
 | `SIMILARITY_THRESHOLD` | No | `0.75` | Cosine similarity cutoff |
 | `PUBLIC_DOC_IDS` | No | `""` | Comma-separated public Google Doc IDs or URLs |
+| `NOTION_API_KEY` | No | `""` | Notion internal integration token (`ntn_...`) |
+| `NOTION_ROOT_PAGE_ID` | No | `""` | Notion parent page ID to crawl for child pages |
 | `DRIVE_FOLDER_ID` | Post-MVP | — | Google Drive folder ID |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Post-MVP | — | Service account JSON string |
 

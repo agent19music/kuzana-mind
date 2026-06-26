@@ -69,9 +69,33 @@ export default function Nav() {
           </span>
         </Link>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          <Link
-            href="/chat"
+        <nav style={{ display: "flex", alignItems: "center", gap: "var(--space-6)" }}>
+          <a
+            href="#features"
+            style={{
+              textDecoration: "none",
+              fontSize: 14,
+              fontWeight: 500,
+              color: scrolled ? "var(--foreground-muted)" : "rgba(255,255,255,0.75)",
+              transition: "color 200ms ease-out",
+            }}
+          >
+            Features
+          </a>
+          <a
+            href="#how-it-works"
+            style={{
+              textDecoration: "none",
+              fontSize: 14,
+              fontWeight: 500,
+              color: scrolled ? "var(--foreground-muted)" : "rgba(255,255,255,0.75)",
+              transition: "color 200ms ease-out",
+            }}
+          >
+            How it works
+          </a>
+          <a
+            href="#get-started"
             style={{
               textDecoration: "none",
               height: 44,
@@ -89,35 +113,15 @@ export default function Nav() {
                     border: "none",
                   }
                 : {
-                    background: "transparent",
+                    background: "rgba(255,255,255,0.12)",
                     color: "#ffffff",
                     border: "1px solid rgba(255,255,255,0.55)",
                   }),
             }}
           >
-            Ask a question
-          </Link>
-
-          <Link
-            href="/chat"
-            style={{
-              textDecoration: "none",
-              height: 44,
-              display: "inline-flex",
-              alignItems: "center",
-              borderRadius: 9999,
-              padding: "0 24px",
-              fontSize: 14,
-              fontWeight: 500,
-              transition: "all 200ms ease-out",
-              background: scrolled ? "var(--inset-surface)" : "rgba(255,255,255,0.12)",
-              color: scrolled ? "var(--foreground)" : "#ffffff",
-              border: scrolled ? "1px solid var(--border-strong)" : "1px solid rgba(255,255,255,0.3)",
-            }}
-          >
-            Sign in
-          </Link>
-        </div>
+            Get started
+          </a>
+        </nav>
       </div>
     </header>
   );

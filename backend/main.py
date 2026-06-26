@@ -39,6 +39,7 @@ class ChatResponse(BaseModel):
     type: str          # "document" | "staff_fallback"
     source_title: str | None = None
     source_doc_id: str | None = None
+    source_type: str | None = None   # "google_docs" | "notion" | "mock"
     staff_name: str | None = None
     staff_email: str | None = None
     staff_domain: str | None = None

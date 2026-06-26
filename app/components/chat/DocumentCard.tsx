@@ -5,13 +5,21 @@ interface DocumentCardProps {
   answer: string;
   sourceTitle?: string;
   sourceDocId?: string;
+  sourceType?: "google_docs" | "notion" | "mock";
   similarityScore?: number;
 }
+
+const SOURCE_LABELS: Record<string, string> = {
+  google_docs: "Google Docs",
+  notion: "Notion",
+  mock: "Internal",
+};
 
 export default function DocumentCard({
   answer,
   sourceTitle,
   sourceDocId,
+  sourceType,
   similarityScore,
 }: DocumentCardProps) {
   return (
@@ -63,6 +71,11 @@ export default function DocumentCard({
               letterSpacing: "0.01em",
             }}
           >
+            {sourceType && sourceType !== "mock" && (
+              <span style={{ color: "var(--foreground-subtle)", marginRight: 4 }}>
+                {SOURCE_LABELS[sourceType] ?? sourceType} &middot;
+              </span>
+            )}
             {sourceTitle}
           </span>
           {similarityScore !== undefined && (
@@ -148,11 +161,15 @@ export default function DocumentCard({
         </ReactMarkdown>
       </div>
 
-      {/* Source link — only for real Google Doc IDs (long alphanumeric), not local file stems */}
-      {sourceDocId && /^[a-zA-Z0-9_-]{25,}$/.test(sourceDocId) && (
+      {/* Source link — Google Docs or Notion */}
+      {sourceDocId && sourceType && sourceType !== "mock" && (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-4)" }}>
           <a
-            href={`https://docs.google.com/document/d/${sourceDocId}`}
+            href={
+              sourceType === "notion"
+                ? `https://notion.so/${sourceDocId.replace(/-/g, "")}`
+                : `https://docs.google.com/document/d/${sourceDocId}`
+            }
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -165,7 +182,7 @@ export default function DocumentCard({
               gap: 4,
             }}
           >
-            Open source document
+            Open in {SOURCE_LABELS[sourceType] ?? "source"}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path
                 d="M2.5 9.5L9.5 2.5M9.5 2.5H5M9.5 2.5V7"

@@ -19,11 +19,12 @@ class DocumentChunk(Base):
     __tablename__ = "documents"
 
     id = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
-    doc_id = Column(String, nullable=False, index=True)  # Google Doc ID or mock filename
+    doc_id = Column(String, nullable=False, index=True)  # Google Doc ID, Notion page ID, or mock filename
     title = Column(String)
     chunk_text = Column(Text, nullable=False)
     embedding = Column(Vector(768))                      # gemini-embedding-2 @ output_dimensionality=768
     metadata_ = Column("metadata", JSONB)
+    source_type = Column(String, default="mock")         # "google_docs" | "notion" | "mock"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
