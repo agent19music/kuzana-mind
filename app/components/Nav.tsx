@@ -61,7 +61,7 @@ export default function Nav() {
           <span
             style={{
               color: scrolled ? "var(--foreground)" : "#ffffff",
-              fontWeight: 600,
+              fontWeight: 400,
               fontSize: 15,
               letterSpacing: "-0.01em",
               transition: "color 200ms ease-out",
@@ -77,7 +77,7 @@ export default function Nav() {
             style={{
               textDecoration: "none",
               fontSize: 14,
-              fontWeight: 500,
+              fontWeight: 400,
               color: scrolled ? "var(--foreground-muted)" : "rgba(255,255,255,0.75)",
               transition: "color 200ms ease-out",
             }}
@@ -89,7 +89,7 @@ export default function Nav() {
             style={{
               textDecoration: "none",
               fontSize: 14,
-              fontWeight: 500,
+              fontWeight: 400,
               color: scrolled ? "var(--foreground-muted)" : "rgba(255,255,255,0.75)",
               transition: "color 200ms ease-out",
             }}
@@ -107,7 +107,7 @@ export default function Nav() {
                 borderRadius: 9999,
                 padding: "0 24px",
                 fontSize: 14,
-                fontWeight: 500,
+                fontWeight: 400,
                 transition: "background 200ms ease-out, color 200ms ease-out, border-color 200ms ease-out",
                 ...(scrolled
                   ? {
@@ -136,7 +136,7 @@ export default function Nav() {
                   borderRadius: 9999,
                   padding: "0 20px",
                   fontSize: 14,
-                  fontWeight: 500,
+                  fontWeight: 400,
                   transition: "background 200ms ease-out, color 200ms ease-out",
                   ...(scrolled
                     ? {

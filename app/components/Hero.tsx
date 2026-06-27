@@ -51,7 +51,7 @@ export default function Hero() {
           style={{
             color: "#ffffff",
             fontSize: "clamp(48px, 9vw, 104px)",
-            fontWeight: 700,
+            fontWeight: 400,
             lineHeight: 1.0,
             letterSpacing: "-0.03em",
             marginBottom: "var(--space-6)",
@@ -67,7 +67,7 @@ export default function Hero() {
           style={{
             color: "rgba(255,255,255,0.82)",
             fontSize: "clamp(16px, 2vw, 20px)",
-            fontWeight: 500,
+            fontWeight: 400,
             lineHeight: 1.6,
             marginBottom: "var(--space-4)",
             maxWidth: 500,
@@ -97,7 +97,7 @@ export default function Hero() {
               borderRadius: 9999,
               padding: "6px 14px",
               fontSize: 13,
-              fontWeight: 500,
+              fontWeight: 400,
               color: "rgba(255,255,255,0.85)",
               border: "1px solid rgba(255,255,255,0.15)",
             }}
@@ -120,7 +120,7 @@ export default function Hero() {
               borderRadius: 9999,
               padding: "6px 14px",
               fontSize: 13,
-              fontWeight: 500,
+              fontWeight: 400,
               color: "rgba(255,255,255,0.85)",
               border: "1px solid rgba(255,255,255,0.15)",
             }}
@@ -154,7 +154,7 @@ export default function Hero() {
               background: "#ffffff",
               color: "#171717",
               fontSize: 15,
-              fontWeight: 500,
+              fontWeight: 400,
               padding: "0 32px",
               transition: "background 200ms ease-out",
             }}
@@ -173,7 +173,7 @@ export default function Hero() {
               background: "transparent",
               color: "#ffffff",
               fontSize: 15,
-              fontWeight: 500,
+              fontWeight: 400,
               padding: "0 32px",
               border: "1px solid rgba(255,255,255,0.55)",
               transition:

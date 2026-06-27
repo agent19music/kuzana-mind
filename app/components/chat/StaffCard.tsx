@@ -37,7 +37,7 @@ export default function StaffCard({
       <p
         style={{
           fontSize: 13,
-          fontWeight: 500,
+          fontWeight: 400,
           color: "var(--foreground-subtle)",
           marginBottom: "var(--space-4)",
           letterSpacing: "0.01em",
@@ -84,7 +84,7 @@ export default function StaffCard({
                 justifyContent: "center",
                 color: "var(--brand-cream)",
                 fontSize: 13,
-                fontWeight: 600,
+                fontWeight: 400,
                 flexShrink: 0,
               }}
             >
@@ -94,7 +94,7 @@ export default function StaffCard({
               <p
                 style={{
                   fontSize: 14,
-                  fontWeight: 600,
+                  fontWeight: 400,
                   color: "var(--foreground)",
                   lineHeight: 1.3,
                 }}
@@ -128,7 +128,7 @@ export default function StaffCard({
                 background: "var(--foreground)",
                 color: "var(--background)",
                 fontSize: 13,
-                fontWeight: 500,
+                fontWeight: 400,
                 padding: "0 16px",
                 textDecoration: "none",
                 flexShrink: 0,

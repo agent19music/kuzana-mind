@@ -152,7 +152,7 @@ export default function ChatPage() {
             gap: 8,
             color: "var(--foreground-muted)",
             fontSize: 14,
-            fontWeight: 500,
+            fontWeight: 400,
             textDecoration: "none",
             transition: "color 200ms ease-out",
           }}
@@ -207,7 +207,7 @@ export default function ChatPage() {
                 <h1
                   style={{
                     fontSize: "clamp(28px, 4vw, 40px)",
-                    fontWeight: 700,
+                    fontWeight: 400,
                     letterSpacing: "-0.025em",
                     lineHeight: 1.15,
                     color: "var(--foreground)",
@@ -247,7 +247,7 @@ export default function ChatPage() {
                       borderRadius: 9999,
                       padding: "10px 18px",
                       fontSize: 14,
-                      fontWeight: 500,
+                      fontWeight: 400,
                       color: "var(--foreground-muted)",
                       cursor: "pointer",
                       transition: "background 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out",
@@ -395,7 +395,7 @@ export default function ChatPage() {
               cursor: input.trim() && !loading ? "pointer" : "not-allowed",
               padding: "0 20px",
               fontSize: 14,
-              fontWeight: 500,
+              fontWeight: 400,
               fontFamily: "var(--font-sans)",
               transition: "background 200ms ease-out, color 200ms ease-out",
             }}

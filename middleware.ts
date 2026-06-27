@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
@@ -6,11 +7,21 @@ const isPublicRoute = createRouteMatcher([
   "/register(.*)",
   "/invite(.*)",
   "/api/webhooks(.*)",
+  "/api/auth/notion(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    await auth.protect();
+  if (isPublicRoute(req)) return;
+
+  await auth.protect();
+
+  const { orgId } = await auth();
+  const path = req.nextUrl.pathname;
+
+  // Authenticated but no active org — send to onboarding.
+  // Exclude /onboarding itself and all API routes (they handle their own auth).
+  if (!orgId && !path.startsWith("/onboarding") && !path.startsWith("/api")) {
+    return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 });
 

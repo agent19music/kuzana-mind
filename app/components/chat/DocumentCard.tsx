@@ -66,7 +66,7 @@ export default function DocumentCard({
           <span
             style={{
               fontSize: 12,
-              fontWeight: 500,
+              fontWeight: 400,
               color: "var(--foreground-muted)",
               letterSpacing: "0.01em",
             }}
@@ -83,7 +83,7 @@ export default function DocumentCard({
               style={{
                 marginLeft: "auto",
                 fontSize: 11,
-                fontWeight: 500,
+                fontWeight: 400,
                 color: "var(--foreground-subtle)",
                 letterSpacing: "0.02em",
               }}
@@ -106,13 +106,13 @@ export default function DocumentCard({
         <ReactMarkdown
           components={{
             h1: ({ children }) => (
-              <p style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{children}</p>
+              <p style={{ fontWeight: 400, fontSize: 15, marginBottom: 4 }}>{children}</p>
             ),
             h2: ({ children }) => (
-              <p style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{children}</p>
+              <p style={{ fontWeight: 400, fontSize: 15, marginBottom: 4 }}>{children}</p>
             ),
             h3: ({ children }) => (
-              <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{children}</p>
+              <p style={{ fontWeight: 400, fontSize: 14, marginBottom: 4 }}>{children}</p>
             ),
             p: ({ children }) => (
               <p style={{ marginBottom: 6 }}>{children}</p>
@@ -174,7 +174,7 @@ export default function DocumentCard({
             rel="noopener noreferrer"
             style={{
               fontSize: 13,
-              fontWeight: 500,
+              fontWeight: 400,
               color: "var(--brand-olive)",
               textDecoration: "none",
               display: "inline-flex",

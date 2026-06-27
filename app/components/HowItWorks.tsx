@@ -36,7 +36,7 @@ export default function HowItWorks() {
         <h2
           style={{
             fontSize: "clamp(28px, 3.5vw, 40px)",
-            fontWeight: 600,
+            fontWeight: 400,
             letterSpacing: "-0.02em",
             lineHeight: 1.2,
             color: "var(--foreground)",
@@ -55,7 +55,7 @@ export default function HowItWorks() {
               <p
                 style={{
                   fontSize: 13,
-                  fontWeight: 500,
+                  fontWeight: 400,
                   letterSpacing: "0.06em",
                   color: "var(--foreground-subtle)",
                   marginBottom: "var(--space-4)",
@@ -66,7 +66,7 @@ export default function HowItWorks() {
               <h3
                 style={{
                   fontSize: 22,
-                  fontWeight: 600,
+                  fontWeight: 400,
                   letterSpacing: "-0.01em",
                   color: "var(--foreground)",
                   marginBottom: "var(--space-3)",

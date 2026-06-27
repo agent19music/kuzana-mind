@@ -35,7 +35,7 @@ function ConnectAnimation() {
             borderRadius: "var(--radius-md)",
             padding: "8px 16px",
             fontSize: 13,
-            fontWeight: 600,
+            fontWeight: 400,
             color: i === active ? "#fff" : "var(--foreground-subtle)",
             fontFamily: "var(--font-sans)",
             textAlign: "center",
@@ -93,7 +93,7 @@ function SearchAnimation() {
           borderRadius: "var(--radius-md)",
           padding: "10px 14px",
           fontSize: 13,
-          fontWeight: 600,
+          fontWeight: 400,
           color: "var(--brand-cream)",
           fontFamily: "var(--font-sans)",
           alignSelf: "flex-start",
@@ -158,7 +158,7 @@ function SyncAnimation() {
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         style={{
           fontSize: 13,
-          fontWeight: 600,
+          fontWeight: 400,
           color: "var(--brand-olive)",
           fontFamily: "var(--font-sans)",
           letterSpacing: "0.01em",
@@ -238,7 +238,7 @@ export default function FeaturesSection() {
           viewport={{ once: true }}
           style={{
             fontSize: 13,
-            fontWeight: 500,
+            fontWeight: 400,
             letterSpacing: "0.01em",
             color: "var(--foreground-subtle)",
             marginBottom: "var(--space-3)",
@@ -254,7 +254,7 @@ export default function FeaturesSection() {
           viewport={{ once: true }}
           style={{
             fontSize: "clamp(28px, 3.5vw, 40px)",
-            fontWeight: 600,
+            fontWeight: 400,
             letterSpacing: "-0.02em",
             lineHeight: 1.2,
             color: "var(--foreground)",
@@ -290,7 +290,7 @@ export default function FeaturesSection() {
                 <h3
                   style={{
                     fontSize: 18,
-                    fontWeight: 600,
+                    fontWeight: 400,
                     letterSpacing: "-0.01em",
                     color: "var(--foreground)",
                     marginBottom: "var(--space-2)",

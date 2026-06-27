@@ -21,23 +21,23 @@ const clerkAppearance = {
   elements: {
     rootBox: { width: "100%" },
     card: { width: "100%" },
-    headerTitle: { fontSize: "20px", fontWeight: "600", letterSpacing: "-0.01em" },
+    headerTitle: { fontSize: "20px", fontWeight: "400", letterSpacing: "-0.01em" },
     headerSubtitle: { fontSize: "14px", color: "#52525b" },
     formButtonPrimary: {
       backgroundColor: "#171717",
       fontSize: "15px",
-      fontWeight: "500",
+      fontWeight: "400",
       borderRadius: "9999px",
       height: "48px",
       "&:hover": { backgroundColor: "#2a2a2a" },
     },
     formFieldInput: { borderRadius: "8px", border: "1px solid #e4e4e7", fontSize: "15px", height: "48px", background: "#f4f4f5" },
-    footerActionLink: { color: "#171717", fontWeight: "500" },
+    footerActionLink: { color: "#171717", fontWeight: "400" },
     identityPreviewText: { color: "#171717" },
     dividerText: { color: "#a1a1aa" },
     dividerLine: { background: "#e4e4e7" },
     socialButtonsBlockButton: { border: "1px solid #e4e4e7", borderRadius: "8px", height: "48px", background: "#ffffff" },
-    socialButtonsBlockButtonText: { color: "#171717", fontWeight: "500" },
+    socialButtonsBlockButtonText: { color: "#171717", fontWeight: "400" },
   },
 };
 
@@ -73,17 +73,17 @@ export default function RegisterPage() {
           style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}
         >
           <Image src="/athena-mind-logo.png" alt="Athena" width={28} height={28} />
-          <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", color: "#171717" }}>Athena</span>
+          <span style={{ fontWeight: 400, fontSize: 15, letterSpacing: "-0.01em", color: "#171717" }}>Athena</span>
         </Link>
 
         {/* Bottom copy */}
         <div style={{ position: "relative", zIndex: 2, marginTop: "auto" }}>
-          <p style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.02em", color: "#171717", lineHeight: 1.35, marginBottom: 12 }}>
+          <p style={{ fontSize: 22, fontWeight: 400, letterSpacing: "-0.02em", color: "#171717", lineHeight: 1.35, marginBottom: 12 }}>
             "Stop losing hours searching
             <br />
             for answers your docs already have."
           </p>
-          <p style={{ fontSize: 13, fontWeight: 600, color: "#a1a1aa", fontFamily: "monospace" }}>~ Kaila M., Operations Lead</p>
+          <p style={{ fontSize: 13, fontWeight: 400, color: "#a1a1aa", fontFamily: "monospace" }}>~ Kaila M., Operations Lead</p>
         </div>
 
         {/* Floating paths — dark on light */}
@@ -134,7 +134,7 @@ export default function RegisterPage() {
             alignItems: "center",
             gap: 6,
             fontSize: 13,
-            fontWeight: 500,
+            fontWeight: 400,
             color: "#a1a1aa",
             textDecoration: "none",
           }}
@@ -152,13 +152,13 @@ export default function RegisterPage() {
           style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", marginBottom: 32 }}
         >
           <Image src="/athena-mind-logo.png" alt="Athena" width={24} height={24} />
-          <span style={{ fontWeight: 600, fontSize: 14, color: "#171717" }}>Athena</span>
+          <span style={{ fontWeight: 400, fontSize: 14, color: "#171717" }}>Athena</span>
         </Link>
 
         {/* Headline above Clerk form */}
         <div style={{ maxWidth: 440, width: "100%", margin: "0 auto" }}>
           <div style={{ marginBottom: 28 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "#171717", marginBottom: 6, lineHeight: 1.2 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 400, letterSpacing: "-0.02em", color: "#171717", marginBottom: 6, lineHeight: 1.2 }}>
               Get your org in sync.
             </h1>
             <p style={{ fontSize: 14, color: "#71717a", lineHeight: 1.6 }}>

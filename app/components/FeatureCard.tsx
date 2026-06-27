@@ -36,7 +36,7 @@ export default function FeatureCard({ number, title, description, icon }: Featur
           style={{
             color: "#a3a3a3",
             fontSize: 13,
-            fontWeight: 500,
+            fontWeight: 400,
             letterSpacing: "0.04em",
           }}
         >
@@ -47,7 +47,7 @@ export default function FeatureCard({ number, title, description, icon }: Featur
       <h3
         style={{
           fontSize: 18,
-          fontWeight: 600,
+          fontWeight: 400,
           color: "#1a1a1a",
           letterSpacing: "-0.01em",
           marginBottom: 10,

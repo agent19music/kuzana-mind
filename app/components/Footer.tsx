@@ -79,7 +79,7 @@ export default function Footer() {
               href="#features"
               style={{
                 fontSize: 14,
-                fontWeight: 500,
+                fontWeight: 400,
                 color: isDark ? "#a8a29e" : "var(--foreground-muted)",
                 textDecoration: "none",
                 transition: "color 200ms ease-out",
@@ -91,7 +91,7 @@ export default function Footer() {
               href="#how-it-works"
               style={{
                 fontSize: 14,
-                fontWeight: 500,
+                fontWeight: 400,
                 color: isDark ? "#a8a29e" : "var(--foreground-muted)",
                 textDecoration: "none",
                 transition: "color 200ms ease-out",
@@ -103,7 +103,7 @@ export default function Footer() {
               href="/privacy"
               style={{
                 fontSize: 14,
-                fontWeight: 500,
+                fontWeight: 400,
                 color: isDark ? "#a8a29e" : "var(--foreground-muted)",
                 textDecoration: "none",
                 transition: "color 200ms ease-out",
@@ -115,7 +115,7 @@ export default function Footer() {
               href="/terms"
               style={{
                 fontSize: 14,
-                fontWeight: 500,
+                fontWeight: 400,
                 color: isDark ? "#a8a29e" : "var(--foreground-muted)",
                 textDecoration: "none",
                 transition: "color 200ms ease-out",
@@ -194,7 +194,7 @@ export default function Footer() {
               alignItems: "center",
               gap: 8,
               fontSize: 14,
-              fontWeight: 500,
+              fontWeight: 400,
               color: isDark ? "#a8a29e" : "var(--foreground-muted)",
               textDecoration: "none",
               transition: "color 200ms ease-out",

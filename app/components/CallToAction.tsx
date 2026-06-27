@@ -24,7 +24,7 @@ export default function CallToAction() {
         <h2
           style={{
             fontSize: "clamp(40px, 6vw, 72px)",
-            fontWeight: 700,
+            fontWeight: 400,
             letterSpacing: "-0.03em",
             lineHeight: 1.0,
             color: "#f0f0f0",
@@ -61,7 +61,7 @@ export default function CallToAction() {
             background: "#ffffff",
             color: "#171717",
             fontSize: 15,
-            fontWeight: 500,
+            fontWeight: 400,
             padding: "0 32px",
             transition: "background 200ms ease-out",
           }}

@@ -38,10 +38,10 @@ function StatCard({
         gap: 6,
       }}
     >
-      <p style={{ fontSize: 13, fontWeight: 500, color: "#6b6b6b", margin: 0 }}>
+      <p style={{ fontSize: 13, fontWeight: 400, color: "#6b6b6b", margin: 0 }}>
         {label}
       </p>
-      <p style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", color: "#1a1a1a", margin: 0 }}>
+      <p style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.02em", color: "#1a1a1a", margin: 0 }}>
         {value}
       </p>
       {sub && (
@@ -81,7 +81,7 @@ function ActionCard({
       <h3
         style={{
           fontSize: 18,
-          fontWeight: 600,
+          fontWeight: 400,
           letterSpacing: "-0.01em",
           color: "#1a1a1a",
           margin: 0,
@@ -106,7 +106,7 @@ function ActionCard({
           alignItems: "center",
           gap: 6,
           fontSize: 14,
-          fontWeight: 500,
+          fontWeight: 400,
           color: "#1a1a1a",
           marginTop: 8,
         }}
@@ -181,21 +181,21 @@ export default async function DashboardPage() {
             }}
           >
             <Image src="/athena-mind-logo.png" alt="Athena" width={32} height={32} />
-            <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", color: "#1a1a1a" }}>
+            <span style={{ fontWeight: 400, fontSize: 15, letterSpacing: "-0.01em", color: "#1a1a1a" }}>
               Athena
             </span>
           </Link>
 
           <nav style={{ display: "flex", alignItems: "center", gap: 32 }}>
-            <Link href="/chat" style={{ fontSize: 14, fontWeight: 500, color: "#6b6b6b", textDecoration: "none" }}>
+            <Link href="/chat" style={{ fontSize: 14, fontWeight: 400, color: "#6b6b6b", textDecoration: "none" }}>
               Chat
             </Link>
             {isAdmin && (
-              <Link href="/admin/staff" style={{ fontSize: 14, fontWeight: 500, color: "#6b6b6b", textDecoration: "none" }}>
+              <Link href="/admin/staff" style={{ fontSize: 14, fontWeight: 400, color: "#6b6b6b", textDecoration: "none" }}>
                 Admin
               </Link>
             )}
-            <Link href="/admin/settings" style={{ fontSize: 14, fontWeight: 500, color: "#6b6b6b", textDecoration: "none" }}>
+            <Link href="/admin/settings" style={{ fontSize: 14, fontWeight: 400, color: "#6b6b6b", textDecoration: "none" }}>
               Settings
             </Link>
           </nav>
@@ -212,13 +212,13 @@ export default async function DashboardPage() {
       >
         {/* Heading */}
         <div style={{ marginBottom: 64 }}>
-          <p style={{ fontSize: 14, fontWeight: 500, color: "#a3a3a3", marginBottom: 12 }}>
+          <p style={{ fontSize: 14, fontWeight: 400, color: "#a3a3a3", marginBottom: 12 }}>
             {org.name}
           </p>
           <h1
             style={{
               fontSize: 48,
-              fontWeight: 700,
+              fontWeight: 400,
               letterSpacing: "-0.02em",
               color: "#1a1a1a",
               lineHeight: 1.1,

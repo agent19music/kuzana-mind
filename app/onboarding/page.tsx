@@ -1,6 +1,6 @@
 "use client";
 
-import { useOrganization } from "@clerk/nextjs";
+import { useClerk, useOrganization } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -54,14 +54,7 @@ function Field({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)" }}>
-        <label
-          style={{
-            fontSize: 13,
-            fontWeight: 500,
-            color: "var(--foreground-muted)",
-            fontFamily: "var(--font-sans)",
-          }}
-        >
+        <label style={{ fontSize: 13, color: "var(--foreground-muted)", fontFamily: "var(--font-sans)" }}>
           {label}
         </label>
         {optional && (
@@ -82,22 +75,41 @@ function Field({
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { setActive } = useClerk();
   const { organization, isLoaded } = useOrganization();
 
-  // Already has an org — skip onboarding
+  // If this org is already fully onboarded, skip straight to dashboard.
+  // We only redirect once Clerk has loaded — prevents the flash.
   useEffect(() => {
-    if (isLoaded && organization) router.replace("/dashboard");
+    if (!isLoaded) return;
+    if (organization?.publicMetadata?.onboarded === true) {
+      router.replace("/dashboard");
+    }
   }, [isLoaded, organization, router]);
 
+  // Pre-fill org name if Clerk's sign-up UI already created the org
   const [orgName, setOrgName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [notionApiKey, setNotionApiKey] = useState("");
   const [notionRootPageId, setNotionRootPageId] = useState("");
   const [publicDocUrls, setPublicDocUrls] = useState("");
 
+  // Sync org name from Clerk when it loads
+  useEffect(() => {
+    if (isLoaded && organization?.name && !orgName) {
+      setOrgName(organization.name);
+    }
+  }, [isLoaded, organization, orgName]);
+
   const [focused, setFocused] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Don't render anything until Clerk has loaded — prevents the flash
+  if (!isLoaded) return null;
+
+  // If org is onboarded, useEffect will redirect — render nothing in the meantime
+  if (organization?.publicMetadata?.onboarded === true) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -114,7 +126,7 @@ export default function OnboardingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orgName,
+          orgName: orgName.trim(),
           logoUrl: logoUrl || null,
           notionApiKey: notionApiKey || null,
           notionRootPageId: notionRootPageId || null,
@@ -129,6 +141,12 @@ export default function OnboardingPage() {
         return;
       }
 
+      // If we just created a new org, activate it in the session before navigating.
+      // Without this the dashboard sees no orgId and redirects back here.
+      if (data.isNew) {
+        await setActive({ organization: data.org_id });
+      }
+
       router.push("/dashboard");
     } catch {
       setError("Could not connect. Check your internet and try again.");
@@ -136,6 +154,8 @@ export default function OnboardingPage() {
       setSubmitting(false);
     }
   }
+
+  const hasExistingOrg = !!organization;
 
   return (
     <div
@@ -161,14 +181,7 @@ export default function OnboardingPage() {
         {/* Logo */}
         <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
           <Image src="/athena-mind-logo.png" alt="Athena" width={36} height={36} />
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 15,
-              letterSpacing: "-0.01em",
-              color: "var(--foreground)",
-            }}
-          >
+          <span style={{ fontSize: 15, letterSpacing: "-0.01em", color: "var(--foreground)" }}>
             Athena
           </span>
         </Link>
@@ -185,14 +198,13 @@ export default function OnboardingPage() {
           <h1
             style={{
               fontSize: 22,
-              fontWeight: 600,
               letterSpacing: "-0.01em",
               color: "var(--foreground)",
               marginBottom: "var(--space-2)",
               fontFamily: "var(--font-sans)",
             }}
           >
-            Set up your organisation
+            {hasExistingOrg ? "Connect your knowledge sources" : "Set up your organisation"}
           </h1>
           <p
             style={{
@@ -203,61 +215,67 @@ export default function OnboardingPage() {
               fontFamily: "var(--font-sans)",
             }}
           >
-            Connect your knowledge sources. You can update these anytime from settings.
+            {hasExistingOrg
+              ? `${organization.name} is ready. Add your Notion or Google Docs to start answering questions.`
+              : "Connect your knowledge sources. You can update these anytime from settings."}
           </p>
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
-            {/* Org name */}
-            <Field label="Organisation name">
-              <input
-                type="text"
-                required
-                value={orgName}
-                onChange={(e) => setOrgName(e.target.value)}
-                onFocus={() => setFocused("orgName")}
-                onBlur={() => setFocused(null)}
-                placeholder="Acme Corp"
-                style={inputStyle(focused === "orgName")}
-              />
-            </Field>
+            {/* Org name — only if no existing org */}
+            {!hasExistingOrg && (
+              <Field label="Organisation name">
+                <input
+                  type="text"
+                  required
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  onFocus={() => setFocused("orgName")}
+                  onBlur={() => setFocused(null)}
+                  placeholder="Acme Corp"
+                  style={inputStyle(focused === "orgName")}
+                />
+              </Field>
+            )}
 
-            {/* Logo */}
-            <Field label="Logo URL" optional hint="Paste a public image URL. PNG or SVG works best.">
-              <input
-                type="url"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                onFocus={() => setFocused("logo")}
-                onBlur={() => setFocused(null)}
-                placeholder="https://acme.com/logo.png"
-                style={inputStyle(focused === "logo")}
-              />
-            </Field>
+            {/* Logo — only if no existing org */}
+            {!hasExistingOrg && (
+              <Field label="Logo URL" optional hint="Paste a public image URL. PNG or SVG works best.">
+                <input
+                  type="url"
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  onFocus={() => setFocused("logo")}
+                  onBlur={() => setFocused(null)}
+                  placeholder="https://acme.com/logo.png"
+                  style={inputStyle(focused === "logo")}
+                />
+              </Field>
+            )}
 
-            {/* Divider */}
+            {/* Knowledge sources */}
             <div
               style={{
-                borderTop: "1px solid var(--border)",
-                paddingTop: "var(--space-6)",
+                borderTop: hasExistingOrg ? "none" : "1px solid var(--border)",
+                paddingTop: hasExistingOrg ? 0 : "var(--space-6)",
                 display: "flex",
                 flexDirection: "column",
                 gap: "var(--space-6)",
               }}
             >
-              <p
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "var(--foreground-subtle)",
-                  fontFamily: "var(--font-sans)",
-                  marginTop: "calc(-1 * var(--space-6))",
-                  marginBottom: 0,
-                }}
-              >
-                Knowledge sources
-              </p>
+              {!hasExistingOrg && (
+                <p
+                  style={{
+                    fontSize: 13,
+                    color: "var(--foreground-subtle)",
+                    fontFamily: "var(--font-sans)",
+                    marginTop: "calc(-1 * var(--space-6))",
+                    marginBottom: 0,
+                  }}
+                >
+                  Knowledge sources
+                </p>
+              )}
 
-              {/* Notion */}
               <Field
                 label="Notion API key"
                 optional
@@ -291,7 +309,6 @@ export default function OnboardingPage() {
                 />
               </Field>
 
-              {/* Public Google Docs */}
               <Field
                 label="Public Google Doc URLs"
                 optional
@@ -308,40 +325,32 @@ export default function OnboardingPage() {
               </Field>
             </div>
 
-            {/* Error */}
             {error && (
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "#dc2626",
-                  fontFamily: "var(--font-sans)",
-                  margin: 0,
-                }}
-              >
+              <p style={{ fontSize: 13, color: "#dc2626", fontFamily: "var(--font-sans)", margin: 0 }}>
                 {error}
               </p>
             )}
 
-            {/* Submit */}
             <button
               type="submit"
-              disabled={submitting || !orgName.trim()}
+              disabled={submitting || (!hasExistingOrg && !orgName.trim())}
               style={{
                 height: 52,
                 borderRadius: 9999,
                 background: "var(--foreground)",
                 color: "var(--background)",
                 fontSize: 15,
-                fontWeight: 500,
                 border: "none",
-                cursor: submitting || !orgName.trim() ? "not-allowed" : "pointer",
+                cursor: submitting || (!hasExistingOrg && !orgName.trim()) ? "not-allowed" : "pointer",
                 fontFamily: "var(--font-sans)",
-                opacity: submitting || !orgName.trim() ? 0.5 : 1,
+                opacity: submitting || (!hasExistingOrg && !orgName.trim()) ? 0.5 : 1,
                 transition: "opacity 150ms ease-out",
                 letterSpacing: "-0.01em",
               }}
             >
-              {submitting ? "Creating organisation…" : "Create organisation"}
+              {submitting
+                ? hasExistingOrg ? "Saving…" : "Creating organisation…"
+                : hasExistingOrg ? "Connect sources" : "Create organisation"}
             </button>
           </form>
         </div>
