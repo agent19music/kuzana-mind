@@ -1,6 +1,5 @@
 "use client";
 
-import { useOrganization } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
@@ -63,7 +62,6 @@ function ThinkingDots() {
 }
 
 export default function ChatPage() {
-  const { organization } = useOrganization();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,7 +85,7 @@ export default function ChatPage() {
       const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q, org_id: organization?.id ?? null }),
+        body: JSON.stringify({ query: q }),
       });
 
       const data = await res.json();
@@ -172,8 +170,8 @@ export default function ChatPage() {
         </Link>
 
         <Image
-          src="/kuzana-mind-logo.png"
-          alt="Kuzana Mind"
+          src="/athena-mind-logo.png"
+          alt="Athena"
           width={64}
           height={64}
           style={{ display: "block" }}
@@ -413,7 +411,7 @@ export default function ChatPage() {
             marginTop: "var(--space-3)",
           }}
         >
-          Kuzana Mind may be wrong. Always verify important information.
+          Athena may be wrong. Always verify important information.
         </p>
       </div>
     </div>

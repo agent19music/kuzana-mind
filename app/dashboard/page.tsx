@@ -3,6 +3,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+type OrgStats = {
+  chunk_count: number;
+  last_synced: string | null;
+  source_types: string[];
+};
+
 const arrowIcon = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -110,7 +118,7 @@ function ActionCard({
 }
 
 export default async function DashboardPage() {
-  const { userId, orgId, orgRole } = await auth();
+  const { userId, orgId, orgRole, getToken } = await auth();
 
   if (!userId) redirect("/login");
   if (!orgId) redirect("/onboarding");
@@ -118,6 +126,27 @@ export default async function DashboardPage() {
   const client = await clerkClient();
   const org = await client.organizations.getOrganization({ organizationId: orgId });
   const isAdmin = orgRole === "org:admin";
+
+  let stats: OrgStats | null = null;
+  try {
+    const token = await getToken();
+    if (token) {
+      const statsRes = await fetch(`${BACKEND_URL}/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (statsRes.ok) stats = await statsRes.json();
+    }
+  } catch {
+    // stats stay null — dashboard renders without them
+  }
+
+  const lastSynced = stats?.last_synced
+    ? new Date(stats.last_synced).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    : "Never";
+  const sourceLabel = stats && stats.source_types.length > 0
+    ? stats.source_types.join(" + ")
+    : "No sources yet";
 
   return (
     <div style={{ minHeight: "100svh", background: "#fafafa" }}>
@@ -151,9 +180,9 @@ export default async function DashboardPage() {
               gap: 8,
             }}
           >
-            <Image src="/kuzana-mind-logo.png" alt="Kuzana Mind" width={32} height={32} />
+            <Image src="/athena-mind-logo.png" alt="Athena" width={32} height={32} />
             <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", color: "#1a1a1a" }}>
-              Kuzana Mind
+              Athena
             </span>
           </Link>
 
@@ -211,9 +240,9 @@ export default async function DashboardPage() {
           className="grid grid-cols-1 sm:grid-cols-3"
           style={{ gap: 24, marginBottom: 48 }}
         >
-          <StatCard label="Status" value="Active" sub="Knowledge base synced" />
+          <StatCard label="Status" value="Active" sub={`Last synced: ${lastSynced}`} />
           <StatCard label="Organisation" value={org.name} sub={isAdmin ? "You are admin" : "Member access"} />
-          <StatCard label="Sources" value="Notion + Docs" sub="Syncs automatically" />
+          <StatCard label="Documents" value={stats ? String(stats.chunk_count) : "—"} sub={sourceLabel} />
         </div>
 
         {/* Action cards */}

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 
-export default function KuzanaBadge() {
+export default function AthenaBadge() {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -57,15 +57,15 @@ export default function KuzanaBadge() {
         <div className="flex items-center gap-2.5">
           <span className="h-6 w-6 shrink-0 rounded-md overflow-hidden" aria-hidden="true">
             <Image
-              src="/kuzana_logo.jpeg"
-              alt="Kuzana"
+              src="/athena_logo.jpeg"
+              alt="Athena"
               width={24}
               height={24}
               className="object-cover"
             />
           </span>
           <span className="text-sm font-medium tracking-wide text-white">
-            Backed by Kuzana
+            Backed by Athena
           </span>
         </div>
       </div>

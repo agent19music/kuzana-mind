@@ -39,10 +39,15 @@ export async function POST(request: NextRequest) {
     public_doc_ids: Array.isArray(publicDocIds) ? publicDocIds.filter(Boolean) : [],
   };
 
+  const backendApiSecret = process.env.BACKEND_API_SECRET ?? "";
+
   try {
     const res = await fetch(`${BACKEND_URL}/ingest`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(backendApiSecret ? { "X-API-Key": backendApiSecret } : {}),
+      },
       body: JSON.stringify(ingestBody),
     });
 

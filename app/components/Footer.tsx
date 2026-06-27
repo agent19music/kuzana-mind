@@ -60,8 +60,8 @@ export default function Footer() {
         >
           {/* Brand */}
           <Image
-            src="/kuzana-mind-logo.png"
-            alt="Kuzana Mind"
+            src="/athena-mind-logo.png"
+            alt="Athena"
             width={48}
             height={48}
             style={{ display: "block" }}
@@ -219,7 +219,7 @@ export default function Footer() {
               transition: "color 200ms ease-out",
             }}
           >
-            &copy; {new Date().getFullYear()} Kuzana Mind. All rights reserved.
+            &copy; {new Date().getFullYear()} Athena. All rights reserved.
           </span>
         </div>
       </div>

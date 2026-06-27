@@ -15,7 +15,7 @@ Employees may claim reimbursement for reasonable business expenses. All claims m
 ## How to Submit a Claim
 
 1. Collect all receipts. Digital receipts are accepted.
-2. Log in to the finance system at finance.kuzana.co.
+2. Log in to the finance system at finance.athena.co.
 3. Navigate to Expense Claims and click New Claim.
 4. Enter each line item, attach the receipt, and assign it to the correct project code.
 5. Submit the claim. Your manager will approve it within 3 business days.

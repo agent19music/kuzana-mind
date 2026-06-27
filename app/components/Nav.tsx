@@ -49,8 +49,8 @@ export default function Nav() {
           style={{ textDecoration: "none", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}
         >
           <Image
-            src="/kuzana-mind-logo.png"
-            alt="Kuzana Mind"
+            src="/athena-mind-logo.png"
+            alt="Athena"
             width={64}
             height={64}
             style={{
@@ -67,7 +67,7 @@ export default function Nav() {
               transition: "color 200ms ease-out",
             }}
           >
-            Kuzana Mind
+            Athena
           </span>
         </Link>
 

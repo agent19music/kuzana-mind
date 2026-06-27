@@ -160,7 +160,7 @@ export default function OnboardingPage() {
       >
         {/* Logo */}
         <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
-          <Image src="/kuzana-mind-logo.png" alt="Kuzana Mind" width={36} height={36} />
+          <Image src="/athena-mind-logo.png" alt="Athena" width={36} height={36} />
           <span
             style={{
               fontWeight: 600,
@@ -169,7 +169,7 @@ export default function OnboardingPage() {
               color: "var(--foreground)",
             }}
           >
-            Kuzana Mind
+            Athena
           </span>
         </Link>
 

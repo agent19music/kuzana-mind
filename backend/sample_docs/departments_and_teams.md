@@ -35,7 +35,7 @@ Lead: Amara Osei (Chief People Officer)
 ### Leave Policy Summary
 - Annual leave: 20 days per calendar year
 - Sick leave: 10 days (no carry-over)
-- Submit requests via the HR portal or email amara.osei@kuzana.co with at least 2 weeks notice for planned leave
+- Submit requests via the HR portal or email amara.osei@athena.co with at least 2 weeks notice for planned leave
 
 ### Onboarding
 New starters complete onboarding over two weeks:
@@ -121,4 +121,4 @@ Published monthly. Share content ideas in the #marketing Slack channel.
 All press enquiries, interview requests, and media mentions must go through Blessing before any response. Do not confirm or deny anything to press without clearance.
 
 ### Events
-Kuzana attends 2–3 industry events per year. Event budget managed by Blessing in coordination with David.
+Athena attends 2–3 industry events per year. Event budget managed by Blessing in coordination with David.

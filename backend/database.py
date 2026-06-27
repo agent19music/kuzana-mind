@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.sql import func
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://kuzana:kuzana@db:5432/kuzana_brain")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://athena:athena@db:5432/athena_brain")
 
 engine = create_engine(DATABASE_URL)
 

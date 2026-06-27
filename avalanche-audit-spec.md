@@ -7,7 +7,7 @@ Sponsored by AVAX Africa. Opt-in per workspace via env var.
 
 ## What this is and isn't
 
-**Is:** A lightweight, verifiable record that a specific question was answered using a specific document at a specific time. Independently auditable — no one needs to trust Kuzana's database.
+**Is:** A lightweight, verifiable record that a specific question was answered using a specific document at a specific time. Independently auditable — no one needs to trust Athena's database.
 
 **Isn't:** Content storage. No query text, no document content, no PII goes on-chain. Only cryptographic hashes and metadata.
 
@@ -26,7 +26,7 @@ One transaction per query, submitted asynchronously after the response is return
   "doc_id": "notion_page_abc123",
   "doc_hash": "sha256(chunk_text_used_in_response)",
   "source_type": "notion | google_docs | mock",
-  "workspace_id": "kuzana_org_xyz",
+  "workspace_id": "athena_org_xyz",
   "similarity_score": 0.87,
   "ts": 1719432000
 }
@@ -88,7 +88,7 @@ AVALANCHE_RPC_URL=https://api.avax-test.network/ext/bc/C/rpc
 AVALANCHE_PRIVATE_KEY=0x...
 
 # Workspace identifier stamped on every tx (can be org name or UUID)
-AVALANCHE_WORKSPACE_ID=kuzana-demo
+AVALANCHE_WORKSPACE_ID=athena-demo
 ```
 
 **Mainnet RPC:** `https://api.avax.network/ext/bc/C/rpc`  
@@ -260,7 +260,7 @@ When a user clicks the badge, they see a raw Avalanche transaction. The `Input D
 - The document hash matches the document currently in the knowledge base
 - The workspace ID matches the org
 
-No Kuzana account needed. No login. Just the tx hash.
+No Athena account needed. No login. Just the tx hash.
 
 ---
 

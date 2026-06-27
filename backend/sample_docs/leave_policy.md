@@ -2,7 +2,7 @@
 
 ## Overview
 
-Kuzana operates a flexible leave policy. All leave must be approved by your direct manager and logged in the HR system at least 48 hours in advance except in emergencies.
+Athena operates a flexible leave policy. All leave must be approved by your direct manager and logged in the HR system at least 48 hours in advance except in emergencies.
 
 ## Annual Leave
 
@@ -23,7 +23,7 @@ Kuzana operates a flexible leave policy. All leave must be approved by your dire
 
 ## How to Request Leave
 
-1. Log in to the HR portal at hr.kuzana.co.
+1. Log in to the HR portal at hr.athena.co.
 2. Navigate to Leave Requests and select the leave type.
 3. Select your dates and add a note for your manager.
 4. Your manager will approve or decline within 24 hours.

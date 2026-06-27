@@ -207,7 +207,7 @@ const cards = [
   {
     animation: <SearchAnimation />,
     title: "Instant answers",
-    body: "Your team asks in plain language. Kuzana Mind surfaces the exact passage from the right document — or routes to the person who knows.",
+    body: "Your team asks in plain language. Athena surfaces the exact passage from the right document — or routes to the person who knows.",
   },
   {
     animation: <SyncAnimation />,

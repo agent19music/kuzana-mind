@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import KuzanaBadge from "./KuzanaBadge";
+import AthenaBadge from "./AthenaBadge";
 
 export default function Hero() {
   return (
@@ -45,7 +45,7 @@ export default function Hero() {
           padding: "0 var(--space-6)",
         }}
       >
-        <KuzanaBadge />
+        <AthenaBadge />
 
         <h1
           style={{
@@ -144,7 +144,7 @@ export default function Hero() {
           }}
         >
           <Link
-            href="#get-started"
+            href="/register"
             style={{
               textDecoration: "none",
               display: "inline-flex",
@@ -158,7 +158,7 @@ export default function Hero() {
               padding: "0 32px",
               transition: "background 200ms ease-out",
             }}
-            className="hover:bg-[#e5e5e5]"
+            className="hover:!bg-[#e5e5e5]"
           >
             Get started
           </Link>

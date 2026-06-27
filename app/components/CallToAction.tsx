@@ -1,17 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 
 export default function CallToAction() {
-  const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim()) return;
-    // TODO: wire to actual waitlist/lead endpoint
-    setSubmitted(true);
-  }
+  const { isSignedIn } = useAuth();
 
   return (
     <section
@@ -53,89 +46,29 @@ export default function CallToAction() {
             marginBottom: "var(--space-8)",
           }}
         >
-          Connect your Google Workspace and Notion. Your organization's
+          Connect your Google Workspace and Notion. Your organization&apos;s
           knowledge, one question away.
         </p>
 
-        {submitted ? (
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
-              height: 52,
-              borderRadius: 9999,
-              background: "rgba(255,255,255,0.1)",
-              border: "1px solid rgba(255,255,255,0.2)",
-              padding: "0 28px",
-              fontSize: 15,
-              fontWeight: 500,
-              color: "#ffffff",
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path
-                d="M3.75 9.75L7.5 13.5L14.25 4.5"
-                stroke="#34A853"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            We'll be in touch soon.
-          </div>
-        ) : (
-          <form
-            onSubmit={handleSubmit}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-3)",
-              flexWrap: "wrap",
-            }}
-          >
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Work email"
-              style={{
-                height: 52,
-                borderRadius: 9999,
-                border: "1px solid rgba(255,255,255,0.2)",
-                background: "rgba(255,255,255,0.08)",
-                color: "#ffffff",
-                fontSize: 15,
-                fontWeight: 400,
-                padding: "0 24px",
-                outline: "none",
-                fontFamily: "var(--font-sans)",
-                minWidth: 260,
-                transition: "border-color 200ms ease-out",
-              }}
-            />
-            <button
-              type="submit"
-              style={{
-                height: 52,
-                borderRadius: 9999,
-                background: "#ffffff",
-                color: "#171717",
-                fontSize: 15,
-                fontWeight: 500,
-                padding: "0 32px",
-                border: "none",
-                cursor: "pointer",
-                fontFamily: "var(--font-sans)",
-                transition: "background 200ms ease-out",
-              }}
-              className="hover:bg-[#e5e5e5]"
-            >
-              Get started
-            </button>
-          </form>
-        )}
+        <Link
+          href={isSignedIn ? "/dashboard" : "/register"}
+          style={{
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            height: 52,
+            borderRadius: 9999,
+            background: "#ffffff",
+            color: "#171717",
+            fontSize: 15,
+            fontWeight: 500,
+            padding: "0 32px",
+            transition: "background 200ms ease-out",
+          }}
+          className="hover:!bg-[#e5e5e5]"
+        >
+          {isSignedIn ? "Go to dashboard" : "Get started"}
+        </Link>
 
         <p
           style={{

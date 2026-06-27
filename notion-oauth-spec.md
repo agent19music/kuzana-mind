@@ -49,7 +49,7 @@ Backend runs ingestion with the live token
 1. Go to `notion.so/my-integrations`
 2. Click **New integration** → type: **Public**
 3. Fill in:
-   - Name: `Kuzana Mind`
+   - Name: `Athena`
    - Website: your domain (localhost fine for dev)
    - Redirect URI: `http://localhost:3000/api/auth/notion/callback`
 4. Under **Capabilities**: check `Read content`
