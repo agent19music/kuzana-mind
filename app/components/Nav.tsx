@@ -3,9 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useAuth, UserButton } from "@clerk/nextjs";
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const { isSignedIn } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 56);
@@ -94,33 +96,72 @@ export default function Nav() {
           >
             How it works
           </a>
-          <a
-            href="#get-started"
-            style={{
-              textDecoration: "none",
-              height: 44,
-              display: "inline-flex",
-              alignItems: "center",
-              borderRadius: 9999,
-              padding: "0 24px",
-              fontSize: 14,
-              fontWeight: 500,
-              transition: "background 200ms ease-out, color 200ms ease-out, border-color 200ms ease-out",
-              ...(scrolled
-                ? {
-                    background: "var(--foreground)",
-                    color: "var(--background)",
-                    border: "none",
-                  }
-                : {
-                    background: "rgba(255,255,255,0.12)",
-                    color: "#ffffff",
-                    border: "1px solid rgba(255,255,255,0.55)",
-                  }),
-            }}
-          >
-            Get started
-          </a>
+          {!isSignedIn ? (
+            <Link
+              href="/register"
+              style={{
+                textDecoration: "none",
+                height: 44,
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 9999,
+                padding: "0 24px",
+                fontSize: 14,
+                fontWeight: 500,
+                transition: "background 200ms ease-out, color 200ms ease-out, border-color 200ms ease-out",
+                ...(scrolled
+                  ? {
+                      background: "var(--foreground)",
+                      color: "var(--background)",
+                      border: "none",
+                    }
+                  : {
+                      background: "rgba(255,255,255,0.12)",
+                      color: "#ffffff",
+                      border: "1px solid rgba(255,255,255,0.55)",
+                    }),
+              }}
+            >
+              Get started
+            </Link>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+              <Link
+                href="/dashboard"
+                style={{
+                  textDecoration: "none",
+                  height: 44,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  borderRadius: 9999,
+                  padding: "0 20px",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  transition: "background 200ms ease-out, color 200ms ease-out",
+                  ...(scrolled
+                    ? {
+                        background: "var(--surface)",
+                        color: "var(--foreground)",
+                        border: "1px solid var(--border-strong)",
+                      }
+                    : {
+                        background: "rgba(255,255,255,0.12)",
+                        color: "#ffffff",
+                        border: "1px solid rgba(255,255,255,0.3)",
+                      }),
+                }}
+              >
+                Dashboard
+              </Link>
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox: { width: 36, height: 36 },
+                  },
+                }}
+              />
+            </div>
+          )}
         </nav>
       </div>
     </header>

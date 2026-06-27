@@ -49,10 +49,9 @@ export default function Integrations() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           style={{
-            fontSize: 11,
+            fontSize: 13,
             fontWeight: 500,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
+            letterSpacing: "0.01em",
             color: "var(--foreground-subtle)",
             marginBottom: "var(--space-3)",
             fontFamily: "var(--font-sans)",

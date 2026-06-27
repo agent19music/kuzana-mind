@@ -17,7 +17,7 @@ export default function CallToAction() {
     <section
       id="get-started"
       style={{
-        background: "var(--foreground)",
+        background: "#0f0f0f",
         padding: "var(--space-32) 0",
       }}
     >
@@ -34,7 +34,7 @@ export default function CallToAction() {
             fontWeight: 700,
             letterSpacing: "-0.03em",
             lineHeight: 1.0,
-            color: "var(--background)",
+            color: "#f0f0f0",
             marginBottom: "var(--space-4)",
             maxWidth: 600,
           }}
@@ -47,7 +47,7 @@ export default function CallToAction() {
         <p
           style={{
             fontSize: 18,
-            color: "rgba(255,255,255,0.45)",
+            color: "rgba(255,255,255,0.5)",
             lineHeight: 1.6,
             maxWidth: 440,
             marginBottom: "var(--space-8)",
@@ -140,7 +140,7 @@ export default function CallToAction() {
         <p
           style={{
             fontSize: 13,
-            color: "rgba(255,255,255,0.3)",
+            color: "rgba(255,255,255,0.38)",
             marginTop: "var(--space-4)",
           }}
         >

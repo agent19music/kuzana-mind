@@ -11,7 +11,7 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter
 
 from database import DocumentChunk, get_session
 
-USE_MOCK = os.getenv("USE_MOCK", "true").lower() == "true"
+USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 SAMPLE_DOCS_PATH = Path(__file__).parent / "sample_docs"
 
 # Comma-separated Google Doc IDs or full URLs, e.g.:
@@ -273,19 +273,29 @@ def load_from_notion(api_key: str, root_page_id: str) -> list[dict]:
 # Multi-source document loading
 # ---------------------------------------------------------------------------
 
-def load_documents() -> list[dict]:
-    """Load documents from all configured sources (additive, not exclusive)."""
+def load_documents(
+    notion_api_key: str | None = None,
+    notion_root_page_id: str | None = None,
+    public_doc_ids: list[str] | None = None,
+) -> list[dict]:
+    """Load documents from all configured sources (additive, not exclusive).
+
+    Per-request overrides (from onboarding form) take precedence over env vars.
+    """
     docs = []
 
-    # Source 1: Public Google Docs
-    if _PUBLIC_DOC_IDS_RAW.strip():
+    # Source 1: Public Google Docs — per-request list takes precedence over env var
+    effective_public_ids = ",".join(public_doc_ids) if public_doc_ids else _PUBLIC_DOC_IDS_RAW
+    if effective_public_ids.strip():
         print("PUBLIC_DOC_IDS set — fetching public Google Docs")
-        docs += load_from_public_gdocs(_PUBLIC_DOC_IDS_RAW)
+        docs += load_from_public_gdocs(effective_public_ids)
 
-    # Source 2: Notion
-    if _NOTION_API_KEY and _NOTION_ROOT_PAGE_ID:
-        print(f"NOTION_API_KEY set — fetching from Notion root page {_NOTION_ROOT_PAGE_ID}")
-        docs += load_from_notion(_NOTION_API_KEY, _NOTION_ROOT_PAGE_ID)
+    # Source 2: Notion — per-request credentials take precedence over env vars
+    effective_notion_key = notion_api_key or _NOTION_API_KEY
+    effective_notion_root = notion_root_page_id or _NOTION_ROOT_PAGE_ID
+    if effective_notion_key and effective_notion_root:
+        print(f"NOTION_API_KEY set — fetching from Notion root page {effective_notion_root}")
+        docs += load_from_notion(effective_notion_key, effective_notion_root)
 
     # Source 3: Google Drive (service account)
     folder_id = os.getenv("DRIVE_FOLDER_ID")
@@ -348,8 +358,47 @@ async def embed_text(text_input: str) -> list[float]:
 # Main ingestion entry point
 # ---------------------------------------------------------------------------
 
-async def run_ingestion() -> dict:
-    docs = load_documents()
+async def run_ingestion(
+    org_id: str | None = None,
+    org_name: str | None = None,
+    org_logo_url: str | None = None,
+    notion_api_key: str | None = None,
+    notion_root_page_id: str | None = None,
+    public_doc_ids: list[str] | None = None,
+) -> dict:
+    # Upsert org record if org_id provided
+    if org_id:
+        from database import Organization
+        with get_session() as session:
+            org = session.query(Organization).filter_by(clerk_org_id=org_id).first()
+            if org:
+                if org_name:
+                    org.name = org_name
+                if org_logo_url:
+                    org.logo_url = org_logo_url
+                if notion_api_key:
+                    org.notion_api_key = notion_api_key
+                if notion_root_page_id:
+                    org.notion_root_page_id = notion_root_page_id
+                if public_doc_ids is not None:
+                    org.public_doc_ids = public_doc_ids
+            else:
+                org = Organization(
+                    clerk_org_id=org_id,
+                    name=org_name or "Unnamed Organisation",
+                    logo_url=org_logo_url,
+                    notion_api_key=notion_api_key,
+                    notion_root_page_id=notion_root_page_id,
+                    public_doc_ids=public_doc_ids or [],
+                )
+                session.add(org)
+            session.commit()
+
+    docs = load_documents(
+        notion_api_key=notion_api_key,
+        notion_root_page_id=notion_root_page_id,
+        public_doc_ids=public_doc_ids,
+    )
     print(f"Loaded {len(docs)} documents.")
 
     all_chunks = []
@@ -363,9 +412,14 @@ async def run_ingestion() -> dict:
         for chunk in all_chunks:
             embedding = await embed_text(chunk["chunk_text"])
 
-            session.query(DocumentChunk).filter_by(doc_id=chunk["doc_id"]).delete()
+            # Scope deletion to this org if provided, else delete all matching doc_id rows
+            q = session.query(DocumentChunk).filter_by(doc_id=chunk["doc_id"])
+            if org_id:
+                q = q.filter_by(org_id=org_id)
+            q.delete()
 
             record = DocumentChunk(
+                org_id=org_id,
                 doc_id=chunk["doc_id"],
                 title=chunk["title"],
                 chunk_text=chunk["chunk_text"],

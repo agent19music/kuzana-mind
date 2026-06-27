@@ -1,5 +1,6 @@
 "use client";
 
+import { useOrganization } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
@@ -62,6 +63,7 @@ function ThinkingDots() {
 }
 
 export default function ChatPage() {
+  const { organization } = useOrganization();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -85,7 +87,7 @@ export default function ChatPage() {
       const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: q }),
+        body: JSON.stringify({ query: q, org_id: organization?.id ?? null }),
       });
 
       const data = await res.json();
