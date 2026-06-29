@@ -44,9 +44,10 @@ Monospace (for code/specs): 'SF Mono', 'Monaco', 'Cascadia Code', monospace
 
 **Rules:**
 - Never use more than 2 font families
-- Hierarchy comes from size, weight, and spacing—not color
-- Keep all-caps usage minimal (only for small labels/tags)
-- Letter-spacing for large headings should be slightly negative (-0.01 to -0.02em)
+- Hierarchy comes from **size and color only** — never weight or case
+- **`font-weight` must be 400 everywhere.** 500, 600, 700 are banned — no medium, no semibold, no bold
+- **No uppercase text anywhere.** `text-transform: uppercase` is banned — labels, badges, nav items, all in sentence case
+- Letter-spacing for large headings: slightly negative (-0.01 to -0.02em) only. Never use positive letter-spacing with uppercase
 
 ---
 

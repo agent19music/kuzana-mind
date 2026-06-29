@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import FileUploadCard from "./FileUploadCard";
 
 const arrowIcon = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -57,7 +58,7 @@ function SyncButton() {
         style={{
           fontSize: 14,
           color: state === "loading" ? "#a3a3a3" : "#1a1a1a",
-          background: "none",
+          background: "#fff",
           border: "1px solid #e5e5e5",
           borderRadius: 9999,
           padding: "7px 18px",
@@ -66,6 +67,7 @@ function SyncButton() {
           alignItems: "center",
           gap: 6,
           transition: "border-color 150ms",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)",
         }}
       >
         {state === "loading" ? "Syncing…" : "Re-sync now"}
@@ -96,7 +98,7 @@ export default function SettingsClient({
     <div>
       {/* Org info */}
       <section style={{ marginBottom: 64 }}>
-        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "0.01em" }}>
+        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "-0.01em" }}>
           Organisation
         </h2>
         <div style={{ borderTop: "1px solid #e5e5e5", marginTop: 16 }}>
@@ -120,7 +122,7 @@ export default function SettingsClient({
 
       {/* Integrations */}
       <section style={{ marginBottom: 64 }}>
-        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "0.01em" }}>
+        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "-0.01em" }}>
           Integrations
         </h2>
         <div style={{ borderTop: "1px solid #e5e5e5", marginTop: 16 }}>
@@ -159,7 +161,7 @@ export default function SettingsClient({
 
       {/* Sync */}
       <section style={{ marginBottom: 64 }}>
-        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "0.01em" }}>
+        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "-0.01em" }}>
           Knowledge sync
         </h2>
         <div style={{ borderTop: "1px solid #e5e5e5", marginTop: 16 }}>
@@ -169,6 +171,23 @@ export default function SettingsClient({
                 Re-indexes all connected sources for this organisation.
               </p>
               <SyncButton />
+            </div>
+          </Row>
+        </div>
+      </section>
+
+      {/* Upload files */}
+      <section style={{ marginBottom: 64 }}>
+        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "-0.01em" }}>
+          Upload files
+        </h2>
+        <div style={{ borderTop: "1px solid #e5e5e5", marginTop: 16 }}>
+          <Row label="Documents">
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ fontSize: 15, color: "#6b6b6b", margin: 0, lineHeight: 1.55 }}>
+                Upload internal documents directly from your device. Supported formats: PDF, Word, Markdown, plain text, HTML, CSV.
+              </p>
+              <FileUploadCard />
             </div>
           </Row>
         </div>

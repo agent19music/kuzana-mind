@@ -1,7 +1,7 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import Image from "next/image";
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import Link from "next/link";
+import DashboardShell from "../components/DashboardShell";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
@@ -11,111 +11,13 @@ type OrgStats = {
   source_types: string[];
 };
 
-const arrowIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #e5e5e5",
-        borderRadius: 8,
-        padding: 32,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      <p style={{ fontSize: 13, fontWeight: 400, color: "#6b6b6b", margin: 0 }}>
-        {label}
-      </p>
-      <p style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.02em", color: "#1a1a1a", margin: 0 }}>
-        {value}
-      </p>
-      {sub && (
-        <p style={{ fontSize: 13, color: "#a3a3a3", margin: 0 }}>{sub}</p>
-      )}
-    </div>
-  );
-}
-
-function ActionCard({
-  href,
-  title,
-  description,
-  cta,
-}: {
-  href: string;
-  title: string;
-  description: string;
-  cta: string;
-}) {
-  return (
-    <Link
-      href={href}
-      style={{
-        textDecoration: "none",
-        background: "#ffffff",
-        border: "1px solid #e5e5e5",
-        borderRadius: 8,
-        padding: 32,
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        transition: "border-color 200ms ease-out, transform 200ms ease-out",
-      }}
-      className="hover:!border-[#1a1a1a] hover:!-translate-y-[2px]"
-    >
-      <h3
-        style={{
-          fontSize: 18,
-          fontWeight: 400,
-          letterSpacing: "-0.01em",
-          color: "#1a1a1a",
-          margin: 0,
-        }}
-      >
-        {title}
-      </h3>
-      <p
-        style={{
-          fontSize: 15,
-          color: "#6b6b6b",
-          lineHeight: 1.6,
-          margin: 0,
-          flex: 1,
-        }}
-      >
-        {description}
-      </p>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 14,
-          fontWeight: 400,
-          color: "#1a1a1a",
-          marginTop: 8,
-        }}
-      >
-        {cta} {arrowIcon}
-      </span>
-    </Link>
-  );
-}
+const ACTIVITY = [
+  { label: "Knowledge sync completed", sub: "247 new chunks indexed", time: "2h ago", dot: "#22c55e" },
+  { label: "Company Handbook updated", sub: "Re-indexed via Notion", time: "5h ago", dot: "#22c55e" },
+  { label: "3 new members joined", sub: "Invited by admin", time: "1d ago", dot: "#60a5fa" },
+  { label: "Q2 OKRs uploaded", sub: "PDF · 156 KB", time: "2d ago", dot: "#a78bfa" },
+  { label: "Benefits Guide indexed", sub: "2,400 chunks · Google Docs", time: "4d ago", dot: "#22c55e" },
+];
 
 export default async function DashboardPage() {
   const { userId, orgId, orgRole, getToken } = await auth();
@@ -124,151 +26,190 @@ export default async function DashboardPage() {
   if (!orgId) redirect("/onboarding");
 
   const client = await clerkClient();
-  const org = await client.organizations.getOrganization({ organizationId: orgId });
+  const [org, memberships] = await Promise.all([
+    client.organizations.getOrganization({ organizationId: orgId }),
+    client.organizations.getOrganizationMembershipList({ organizationId: orgId, limit: 100 }),
+  ]);
   const isAdmin = orgRole === "org:admin";
+  const memberCount = memberships.totalCount ?? memberships.data.length;
 
   let stats: OrgStats | null = null;
   try {
     const token = await getToken();
     if (token) {
-      const statsRes = await fetch(`${BACKEND_URL}/stats`, {
+      const r = await fetch(`${BACKEND_URL}/stats`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-      if (statsRes.ok) stats = await statsRes.json();
+      if (r.ok) stats = await r.json();
     }
-  } catch {
-    // stats stay null — dashboard renders without them
-  }
+  } catch { /* stats stay null */ }
 
   const lastSynced = stats?.last_synced
     ? new Date(stats.last_synced).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : "Never";
-  const sourceLabel = stats && stats.source_types.length > 0
-    ? stats.source_types.join(" + ")
-    : "No sources yet";
+
+  const sourceCount = stats?.source_types?.length ?? 0;
 
   return (
-    <div style={{ minHeight: "100svh", background: "#fafafa" }}>
-      {/* Nav */}
-      <header
-        style={{
-          height: 72,
-          borderBottom: "1px solid #e5e5e5",
-          background: "#ffffff",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 48px",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 900,
-            width: "100%",
-            margin: "0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Link
-            href="/"
+    <DashboardShell>
+      <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
+
+          {/* Page heading */}
+          <div style={{ marginBottom: 48 }}>
+            <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.2, margin: 0 }}>
+              Overview
+            </h1>
+          </div>
+
+          {/* Stat row */}
+          <div
             style={{
-              textDecoration: "none",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: 1,
+              background: "#E8E8E8",
+              border: "1px solid #E8E8E8",
+              borderRadius: 10,
+              overflow: "hidden",
+              marginBottom: 40,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
             }}
           >
-            <Image src="/athena-mind-logo.png" alt="Athena" width={32} height={32} />
-            <span style={{ fontWeight: 400, fontSize: 15, letterSpacing: "-0.01em", color: "#1a1a1a" }}>
-              Athena
-            </span>
-          </Link>
+            {[
+              { label: "Chunks indexed", value: stats ? stats.chunk_count.toLocaleString() : "—", sub: `Last synced ${lastSynced}` },
+              { label: "Team members", value: String(memberCount), sub: isAdmin ? "You are admin" : "Member access" },
+              { label: "Sources connected", value: String(sourceCount), sub: sourceCount > 0 ? (stats?.source_types ?? []).join(", ") : "No sources yet" },
+              { label: "Status", value: "Active", sub: "All systems operational" },
+            ].map(s => (
+              <div
+                key={s.label}
+                style={{
+                  background: "#fff",
+                  padding: "24px 28px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                <p style={{ fontSize: 12, fontWeight: 400, color: "#aaa", margin: 0, letterSpacing: "-0.01em" }}>
+                  {s.label}
+                </p>
+                <p style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: 0, lineHeight: 1.15 }}>
+                  {s.value}
+                </p>
+                <p style={{ fontSize: 12, color: "#bbb", margin: 0 }}>{s.sub}</p>
+              </div>
+            ))}
+          </div>
 
-          <nav style={{ display: "flex", alignItems: "center", gap: 32 }}>
-            <Link href="/chat" style={{ fontSize: 14, fontWeight: 400, color: "#6b6b6b", textDecoration: "none" }}>
-              Chat
-            </Link>
-            {isAdmin && (
-              <Link href="/admin/staff" style={{ fontSize: 14, fontWeight: 400, color: "#6b6b6b", textDecoration: "none" }}>
-                Admin
-              </Link>
-            )}
-            <Link href="/admin/settings" style={{ fontSize: 14, fontWeight: 400, color: "#6b6b6b", textDecoration: "none" }}>
-              Settings
-            </Link>
-          </nav>
-        </div>
-      </header>
+          {/* Two-column lower section */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 32, alignItems: "start" }}>
 
-      {/* Content */}
-      <main
-        style={{
-          maxWidth: 900,
-          margin: "0 auto",
-          padding: "80px 48px",
-        }}
-      >
-        {/* Heading */}
-        <div style={{ marginBottom: 64 }}>
-          <p style={{ fontSize: 14, fontWeight: 400, color: "#a3a3a3", marginBottom: 12 }}>
-            {org.name}
-          </p>
-          <h1
-            style={{
-              fontSize: 48,
-              fontWeight: 400,
-              letterSpacing: "-0.02em",
-              color: "#1a1a1a",
-              lineHeight: 1.1,
-              marginBottom: 16,
-            }}
-          >
-            Your knowledge base
-            <br />
-            is ready.
-          </h1>
-          <p style={{ fontSize: 17, color: "#6b6b6b", lineHeight: 1.6, maxWidth: 520 }}>
-            Ask anything about how your organisation works. Get answers from your
-            documents — never a guess.
-          </p>
-        </div>
+            {/* Recent activity */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <h2 style={{ fontSize: 13, fontWeight: 400, color: "#111", margin: 0, letterSpacing: "-0.01em" }}>
+                  Recent activity
+                </h2>
+                {isAdmin && (
+                  <Link href="/admin/connections" style={{ fontSize: 12, color: "#888", textDecoration: "none" }}>
+                    View connections →
+                  </Link>
+                )}
+              </div>
+              <div
+                style={{
+                  background: "#fff",
+                  border: "1px solid #E8E8E8",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                }}
+              >
+                {ACTIVITY.map((a, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 14,
+                      padding: "14px 20px",
+                      borderBottom: i < ACTIVITY.length - 1 ? "1px solid #F3F3F3" : "none",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: a.dot,
+                        flexShrink: 0,
+                        boxShadow: `0 0 0 3px ${a.dot}22`,
+                      }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13.5, fontWeight: 400, color: "#222", margin: 0, lineHeight: 1.35 }}>
+                        {a.label}
+                      </p>
+                      <p style={{ fontSize: 12, color: "#999", margin: 0, marginTop: 1 }}>
+                        {a.sub}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: 12, color: "#bbb", flexShrink: 0 }}>{a.time}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-        {/* Stats row */}
-        <div
-          className="grid grid-cols-1 sm:grid-cols-3"
-          style={{ gap: 24, marginBottom: 48 }}
-        >
-          <StatCard label="Status" value="Active" sub={`Last synced: ${lastSynced}`} />
-          <StatCard label="Organisation" value={org.name} sub={isAdmin ? "You are admin" : "Member access"} />
-          <StatCard label="Documents" value={stats ? String(stats.chunk_count) : "—"} sub={sourceLabel} />
-        </div>
+            {/* Quick actions */}
+            <div>
+              <h2 style={{ fontSize: 13, fontWeight: 400, color: "#111", marginBottom: 16, letterSpacing: "-0.01em" }}>
+                Quick actions
+              </h2>
+              <div
+                style={{
+                  background: "#fff",
+                  border: "1px solid #E8E8E8",
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                }}
+              >
+                {[
+                  { href: "/chat", label: "Ask a question", sub: "Search your knowledge base" },
+                  ...(isAdmin
+                    ? [
+                        { href: "/admin/connections", label: "Manage connections", sub: "Notion, Google Docs, Drive" },
+                        { href: "/admin/files", label: "Upload files", sub: "PDF, Word, Markdown, CSV" },
+                        { href: "/admin/staff", label: "Invite team member", sub: `${memberCount} members` },
+                      ]
+                    : []),
+                ].map((action, i, arr) => (
+                  <Link
+                    key={action.href}
+                    href={action.href}
+                    className="dashboard-action-link"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                      padding: "14px 18px",
+                      textDecoration: "none",
+                      borderBottom: i < arr.length - 1 ? "1px solid #F3F3F3" : "none",
+                    }}
+                  >
+                    <span style={{ fontSize: 13.5, fontWeight: 400, color: "#222" }}>{action.label}</span>
+                    <span style={{ fontSize: 12, color: "#aaa" }}>{action.sub}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
 
-        {/* Action cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: 24 }}>
-          <ActionCard
-            href="/chat"
-            title="Ask a question"
-            description="Get instant answers from your organisation's documents. Sources always cited."
-            cta="Open chat"
-          />
-          {isAdmin && (
-            <ActionCard
-              href="/admin/staff"
-              title="Manage team"
-              description="Invite members, upload a staff list, or manage access roles."
-              cta="Go to admin"
-            />
-          )}
-          <ActionCard
-            href="/admin/settings"
-            title="Settings"
-            description="Update your Notion connection, logo, and knowledge sources."
-            cta="Open settings"
-          />
         </div>
       </main>
-    </div>
+    </DashboardShell>
   );
 }

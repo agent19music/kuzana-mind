@@ -1,11 +1,12 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from auth import AuthContext, require_auth, require_backend_secret
+from extract import SUPPORTED, extract_text
 from database import DocumentChunk, get_session
 from ingest import run_ingestion
 from retrieval import answer_query
@@ -131,6 +132,101 @@ async def ingest(
         public_doc_ids=req.public_doc_ids,
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# File upload
+# ---------------------------------------------------------------------------
+
+MAX_TOTAL_BYTES = 150 * 1024 * 1024  # 150 MB per request
+
+
+@app.post("/upload")
+async def upload_files(
+    files: list[UploadFile] = File(...),
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """
+    Accept one or more files, extract text, chunk, embed, and upsert.
+    org_id comes from the verified Clerk JWT — never from the request body.
+    """
+    from pathlib import Path
+    from ingest import chunk_document, embed_text
+
+    org_id = auth_ctx.clerk_org_id
+
+    total_size = sum(f.size or 0 for f in files)
+    if total_size > MAX_TOTAL_BYTES:
+        raise HTTPException(400, "Total upload exceeds 150 MB")
+
+    docs = []
+    skipped = []
+
+    for file in files:
+        ext = Path(file.filename or "").suffix.lower()
+
+        if ext not in SUPPORTED:
+            skipped.append({"name": file.filename, "reason": f"unsupported type ({ext or 'none'})"})
+            continue
+
+        raw = await file.read()
+
+        try:
+            text = extract_text(file.filename, raw)
+        except ValueError as e:
+            skipped.append({"name": file.filename, "reason": str(e)})
+            continue
+
+        if not text.strip():
+            skipped.append({"name": file.filename, "reason": "no extractable text"})
+            continue
+
+        title = Path(file.filename).stem.replace("_", " ").replace("-", " ").title()
+
+        docs.append({
+            "doc_id": f"upload:{org_id}:{file.filename}",
+            "title": title,
+            "content": text,
+            "source_type": "upload",
+        })
+
+    if not docs:
+        return {"status": "ok", "uploaded": 0, "chunks": 0, "skipped": skipped}
+
+    from database import DocumentChunk
+
+    all_chunks = []
+    for doc in docs:
+        all_chunks.extend(chunk_document(doc))
+
+    with get_session() as session:
+        upserted = 0
+        for chunk in all_chunks:
+            embedding = await embed_text(chunk["chunk_text"])
+
+            session.query(DocumentChunk).filter_by(
+                doc_id=chunk["doc_id"], org_id=org_id
+            ).delete()
+
+            session.add(DocumentChunk(
+                org_id=org_id,
+                doc_id=chunk["doc_id"],
+                title=chunk["title"],
+                chunk_text=chunk["chunk_text"],
+                embedding=embedding,
+                metadata_=chunk["metadata"],
+                source_type="upload",
+            ))
+            upserted += 1
+
+        session.commit()
+
+    return {
+        "status": "ok",
+        "uploaded": len(docs),
+        "chunks": upserted,
+        "skipped": skipped,
+    }
 
 
 # ---------------------------------------------------------------------------

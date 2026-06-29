@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Dashboard hover states (server components can't use onMouse*) */
+.dashboard-action-link:hover { background: #FAFAFA; }
+
 /* Clerk auth page overrides */
 .cl-card {
   box-shadow: none !important;

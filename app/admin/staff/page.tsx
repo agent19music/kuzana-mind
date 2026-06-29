@@ -1,8 +1,7 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import Image from "next/image";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import StaffClient from "./StaffClient";
+import DashboardShell from "../../components/DashboardShell";
 
 export default async function StaffPage() {
   const { userId, orgId, orgRole } = await auth();
@@ -33,60 +32,15 @@ export default async function StaffPage() {
   }));
 
   return (
-    <div style={{ minHeight: "100svh", background: "#fafafa" }}>
-      {/* Header */}
-      <header
-        style={{
-          height: 72,
-          borderBottom: "1px solid #e5e5e5",
-          background: "#ffffff",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 48px",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 900,
-            width: "100%",
-            margin: "0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
-            <Image src="/athena-mind-logo.png" alt="Athena" width={32} height={32} />
-            <span style={{ fontSize: 15, letterSpacing: "-0.01em", color: "#1a1a1a" }}>Athena</span>
-          </Link>
-
-          <nav style={{ display: "flex", alignItems: "center", gap: 32 }}>
-            <Link href="/chat" style={{ fontSize: 14, color: "#6b6b6b", textDecoration: "none" }}>Chat</Link>
-            <Link href="/admin/staff" style={{ fontSize: 14, color: "#1a1a1a", textDecoration: "none" }}>Team</Link>
-            <Link href="/admin/settings" style={{ fontSize: 14, color: "#6b6b6b", textDecoration: "none" }}>Settings</Link>
-          </nav>
-        </div>
-      </header>
-
-      {/* Content */}
-      <main style={{ maxWidth: 900, margin: "0 auto", padding: "80px 48px" }}>
-        {/* Breadcrumb */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 48 }}>
-          <Link href="/dashboard" style={{ fontSize: 14, color: "#a3a3a3", textDecoration: "none" }}>
-            Dashboard
-          </Link>
-          <span style={{ fontSize: 14, color: "#d4d4d4" }}>/</span>
-          <span style={{ fontSize: 14, color: "#1a1a1a" }}>Team</span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 64 }}>
-          <h1 style={{ fontSize: 40, letterSpacing: "-0.02em", color: "#1a1a1a", lineHeight: 1.15, margin: 0 }}>
-            {org.name}
+    <DashboardShell>
+      <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
+            <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.2, marginBottom: 48 }}>
+            Team
           </h1>
+          <StaffClient members={members} />
         </div>
-
-        <StaffClient members={members} />
       </main>
-    </div>
+    </DashboardShell>
   );
 }

@@ -52,6 +52,20 @@
 
 ---
 
+## UI Design Rules — Absolute Constraints
+
+These apply to every component in `app/`. Violations must be fixed before shipping.
+
+| Rule | Detail |
+|---|---|
+| **No bold or semibold** | `fontWeight` must be `400` everywhere. `500`, `600`, `700` are banned. |
+| **No uppercase text** | `textTransform: "uppercase"` is banned. Labels, nav items, badges — all sentence case. |
+| **No excessive letter-spacing** | Never use `letterSpacing` values above `0.02em`. Never pair spacing with uppercase. |
+| **Build command** | Always use `pnpm build` to verify — never `npm run build`. |
+| **Hierarchy via size/color** | Differentiate elements through `fontSize` and `color`, not weight or case. |
+
+---
+
 ## File Structure
 
 ```

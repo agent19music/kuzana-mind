@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import DocumentCard from "../components/chat/DocumentCard";
 import StaffCard from "../components/chat/StaffCard";
+import DashboardShell from "../components/DashboardShell";
 
 
 const API_URL = "/api";
@@ -123,62 +122,16 @@ export default function ChatPage() {
   const isEmpty = messages.length === 0;
 
   return (
+    <DashboardShell>
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100svh",
+        flex: 1,
+        overflow: "hidden",
         background: "var(--background)",
       }}
     >
-      {/* Top nav */}
-      <header
-        style={{
-          height: 64,
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 var(--space-6)",
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            color: "var(--foreground-muted)",
-            fontSize: 14,
-            fontWeight: 400,
-            textDecoration: "none",
-            transition: "color 200ms ease-out",
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M10 13L5 8l5-5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Back
-        </Link>
-
-        <Image
-          src="/athena-mind-logo.png"
-          alt="Athena"
-          width={64}
-          height={64}
-          style={{ display: "block" }}
-        />
-
-        <div style={{ width: 48 }} />
-      </header>
 
       {/* Messages */}
       <div
@@ -415,5 +368,6 @@ export default function ChatPage() {
         </p>
       </div>
     </div>
+    </DashboardShell>
   );
 }
