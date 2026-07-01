@@ -25,7 +25,7 @@ export default function Footer() {
             letterSpacing: "-0.01em",
           }}
         >
-          Kuzana Brain
+          Athena
         </span>
         <span
           style={{

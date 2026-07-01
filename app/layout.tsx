@@ -10,7 +10,7 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Kuzana Mind — Know instantly.",
+  title: "Athena — Know instantly.",
   description:
     "Ask anything about how we work. Get the right document or the right person — never a guess.",
 };

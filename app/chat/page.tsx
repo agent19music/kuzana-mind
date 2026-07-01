@@ -170,7 +170,7 @@ export default function ChatPage() {
 
         <Image
           src="/kuzana-mind-logo.png"
-          alt="Kuzana Mind"
+          alt="Athena"
           width={64}
           height={64}
           style={{ display: "block" }}
@@ -409,7 +409,7 @@ export default function ChatPage() {
             marginTop: "var(--space-3)",
           }}
         >
-          Kuzana Mind may be wrong. Always verify important information.
+          Athena may be wrong. Always verify important information.
         </p>
       </div>
     </div>

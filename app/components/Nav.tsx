@@ -48,7 +48,7 @@ export default function Nav() {
         >
           <Image
             src="/kuzana-mind-logo.png"
-            alt="Kuzana Mind"
+            alt="Athena"
             width={64}
             height={64}
             style={{
@@ -65,7 +65,7 @@ export default function Nav() {
               transition: "color 200ms ease-out",
             }}
           >
-            Kuzana Mind
+            Athena
           </span>
         </Link>
 
