@@ -5,6 +5,141 @@
 /* Dashboard hover states (server components can't use onMouse*) */
 .dashboard-action-link:hover { background: #FAFAFA; }
 
+/* Sidenav nav links — CSS-only hover (off main thread, Emil-correct) */
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 1px 8px;
+  padding: 7px 12px;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: #555;
+  border-radius: 7px;
+  background: transparent;
+  transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .nav-link:hover { background: rgba(0,0,0,0.04); color: #333; }
+  .nav-link:hover .nav-icon { color: #555; }
+}
+.nav-link:active { transform: translateX(1px); }
+.nav-link[data-active="true"] {
+  color: #111;
+  background: rgba(0,0,0,0.055);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.82), inset 0 0 0 1px rgba(0,0,0,0.05);
+}
+.nav-link .nav-icon {
+  color: #999;
+  flex-shrink: 0;
+  display: flex;
+  transition: color 120ms var(--ease-out);
+}
+.nav-link[data-active="true"] .nav-icon { color: #444; }
+
+/* Account popover — scales up from bottom-left (origin-aware, Emil rule) */
+.account-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 8px;
+  right: 8px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.05);
+  opacity: 0;
+  transform: scale(0.96) translateY(6px);
+  pointer-events: none;
+  transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+  transform-origin: bottom left;
+  z-index: 50;
+  overflow: hidden;
+}
+.account-menu[data-open="true"] {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
+
+/* Account menu items */
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: #1a1a1a;
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  transition: background 100ms var(--ease-out);
+  text-align: left;
+}
+@media (hover: hover) and (pointer: fine) {
+  .account-menu-item:hover { background: #f5f5f5; }
+}
+.account-menu-item:active { background: #efefef; }
+
+/* Pill button — press feedback + border hover */
+.btn-pill {
+  transition: border-color 150ms var(--ease-out), transform 150ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn-pill:hover { border-color: #c4c4c4; }
+}
+.btn-pill:active { transform: scale(0.97); }
+
+/* Inline edit row — pencil fades in on hover */
+.edit-row { display: flex; align-items: center; gap: 10px; }
+.edit-row .pencil-icon {
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+  color: #a3a3a3;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .edit-row:hover .pencil-icon { opacity: 1; transform: translateX(0); }
+  .edit-row .pencil-icon:hover { color: #1a1a1a; }
+}
+
+/* Logo upload hover */
+.logo-upload {
+  transition: transform 150ms var(--ease-out);
+}
+.logo-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out);
+  color: #fff;
+  border-radius: 10px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .logo-upload:hover .logo-overlay { opacity: 1; }
+}
+.logo-upload:active { transform: scale(0.96); }
+
+/* Upload spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 14px; height: 14px;
+  border: 1.5px solid #e5e5e5;
+  border-top-color: #1a1a1a;
+  border-radius: 50%;
+  animation: spin 600ms linear infinite;
+  flex-shrink: 0;
+}
+
 /* Clerk auth page overrides */
 .cl-card {
   box-shadow: none !important;
@@ -233,3 +368,33 @@ body {
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+tml {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: oklch(0.15 0 0 / 15%);
+}
+
+.dark ::selection {
+  background: oklch(0.95 0 0 / 20%);
+}
+
+   /* For WebKit browsers (Chrome, Safari, newer Edge, Opera) */
+element::-webkit-scrollbar {
+  display: none;
+}
+
+::-webkit-scrollbar {
+    display: none;
+}
+
+/* For Firefox */
+element {
+  scrollbar-width: none;
+}
+
+/* For Internet Explorer and older Edge */
+element {
+  -ms-overflow-style: none;
+}

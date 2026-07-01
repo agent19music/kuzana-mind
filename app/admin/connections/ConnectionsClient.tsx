@@ -58,7 +58,7 @@ const CONNECTIONS: Connection[] = [
     status: "soon",
     meta: "Planned · Q3 2025",
     actionLabel: "Notify me",
-    logo: <Image src="/icons/slack_icon.svg" alt="Slack" width={22} height={22} />,
+    logo: <Image src="/icons/slack_icon.svg" alt="Slack" width={32} height={32} />,
   },
   {
     id: "confluence",

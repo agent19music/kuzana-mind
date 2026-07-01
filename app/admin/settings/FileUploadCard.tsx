@@ -66,15 +66,20 @@ export default function FileUploadCard() {
           padding: "40px 24px",
           textAlign: "center",
           background: dragging ? "#f9f9f9" : "#ffffff",
-          transition: "all 150ms",
+          transition: "border-color 150ms, background 150ms",
           cursor: isUploading ? "not-allowed" : "default",
         }}
       >
-        <p style={{ fontSize: 14, color: "#6b6b6b", margin: "0 0 16px 0", lineHeight: 1.55 }}>
-          {isUploading
-            ? "Uploading and indexing…"
-            : "Drop files or a folder here, or pick them below"}
-        </p>
+        {isUploading ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16 }}>
+            <span className="spinner" />
+            <span style={{ fontSize: 14, color: "#6b6b6b" }}>Uploading and indexing…</span>
+          </div>
+        ) : (
+          <p style={{ fontSize: 14, color: "#6b6b6b", margin: "0 0 16px 0", lineHeight: 1.55 }}>
+            Drop files or a folder here, or pick them below
+          </p>
+        )}
         <p style={{ fontSize: 12, color: "#a3a3a3", margin: "0 0 20px 0" }}>
           .txt · .md · .pdf · .docx · .html · .csv — up to 25 MB per file
         </p>
@@ -135,8 +140,8 @@ export default function FileUploadCard() {
 
       {state === "done" && result && (
         <div style={{ fontSize: 13, color: "#6b6b6b" }}>
-          <p style={{ margin: "0 0 4px 0" }}>
-            {result.uploaded} file{result.uploaded !== 1 ? "s" : ""} indexed
+          <p style={{ margin: "0 0 4px 0", color: "#3a7a5a" }}>
+            ✓ {result.uploaded} file{result.uploaded !== 1 ? "s" : ""} indexed
             {" "}· {result.chunks} chunks added
           </p>
           {result.skipped.length > 0 && (

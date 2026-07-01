@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, useAnimationFrame } from "framer-motion";
 import DashboardShell from "../../components/DashboardShell";
+import GradientBanner from "../../components/GradientBanner";
 
+6
 const PLANS = [
   {
     id: "starter",
@@ -294,48 +296,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
   );
 }
 
-function GradientBanner() {
-  const ref = useRef<HTMLCanvasElement>(null);
-  // ponytail: canvas gradient animation — framer shader not available in React, this is equivalent
-  useAnimationFrame((t) => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const w = canvas.width;
-    const h = canvas.height;
-    const s = t / 4000;
 
-    // Three animated radial blobs
-    const blobs = [
-      { x: w * (0.15 + 0.25 * Math.sin(s * 0.7)), y: h * (0.5 + 0.4 * Math.cos(s * 0.5)), r: w * 0.6, color: "rgba(255,255,255,0.55)" },
-      { x: w * (0.55 + 0.3 * Math.cos(s * 0.9)), y: h * (0.5 + 0.35 * Math.sin(s * 0.6)), r: w * 0.55, color: "rgba(120,230,220,0.70)" },
-      { x: w * (0.75 + 0.2 * Math.sin(s * 1.1)), y: h * (0.5 + 0.4 * Math.cos(s * 0.8)), r: w * 0.5, color: "rgba(100,210,255,0.60)" },
-    ];
-
-    ctx.clearRect(0, 0, w, h);
-    // Base: Tiffany blue
-    ctx.fillStyle = "#3ecfbf";
-    ctx.fillRect(0, 0, w, h);
-
-    for (const b of blobs) {
-      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
-      g.addColorStop(0, b.color);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
-    }
-  });
-
-  return (
-    <canvas
-      ref={ref}
-      width={480}
-      height={160}
-      style={{ width: "100%", height: 140, display: "block", borderRadius: 10 }}
-    />
-  );
-}
 
 function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => void }) {
   return (
@@ -352,21 +313,21 @@ function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => 
       }}
     >
       {/* Animated gradient banner */}
-      <div style={{ position: "relative", margin: "10px 10px 0" }}>
+      <div style={{ position: "relative", margin: "10px 10px 0", height: 120 }}>
         <GradientBanner />
         {/* Overlay: plan name + badge + subtitle */}
         <div style={{ position: "absolute", inset: 0, padding: "18px 20px", display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
-            <span style={{ fontSize: 22, fontWeight: 400, color: "#fff", letterSpacing: "-0.02em" }}>Pro</span>
+            <span style={{ fontSize: 22, fontWeight: 400, color: "#111", letterSpacing: "-0.02em" }}>Pro</span>
             <span
               style={{
                 fontSize: 11,
                 fontWeight: 400,
-                color: "#fff",
-                background: "rgba(0,0,0,0.55)",
+                color: "#555",
+                background: "rgba(0,0,0,0.08)",
                 borderRadius: 20,
                 padding: "3px 9px",
               }}
@@ -374,7 +335,7 @@ function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => 
               Popular
             </span>
           </div>
-          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontWeight: 400 }}>Unlock more powerful features</span>
+          <span style={{ fontSize: 13, color: "#888", fontWeight: 400 }}>Unlock more powerful features</span>
         </div>
       </div>
 

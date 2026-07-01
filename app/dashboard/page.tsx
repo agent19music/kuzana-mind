@@ -2,6 +2,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DashboardShell from "../components/DashboardShell";
+import GradientBanner from "../components/GradientBanner";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
@@ -82,24 +83,28 @@ export default async function DashboardPage() {
               { label: "Team members", value: String(memberCount), sub: isAdmin ? "You are admin" : "Member access" },
               { label: "Sources connected", value: String(sourceCount), sub: sourceCount > 0 ? (stats?.source_types ?? []).join(", ") : "No sources yet" },
               { label: "Status", value: "Active", sub: "All systems operational" },
-            ].map(s => (
+            ].map((s, i) => (
               <div
                 key={s.label}
                 style={{
-                  background: "#fff",
+                  position: "relative",
+                  background: i === 1 ? "#b8e4ff" : "#fff",
                   padding: "24px 28px",
+                  minHeight: i === 1 ? 320 : undefined,
                   display: "flex",
                   flexDirection: "column",
                   gap: 4,
+                  overflow: "hidden",
                 }}
               >
-                <p style={{ fontSize: 12, fontWeight: 400, color: "#aaa", margin: 0, letterSpacing: "-0.01em" }}>
+                {i === 1 && <GradientBanner />}
+                <p style={{ position: "relative", fontSize: 12, fontWeight: 400, color: "#aaa", margin: 0, letterSpacing: "-0.01em" }}>
                   {s.label}
                 </p>
-                <p style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: 0, lineHeight: 1.15 }}>
+                <p style={{ position: "relative", fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: 0, lineHeight: 1.15 }}>
                   {s.value}
                 </p>
-                <p style={{ fontSize: 12, color: "#bbb", margin: 0 }}>{s.sub}</p>
+                <p style={{ position: "relative", fontSize: 12, color: "#bbb", margin: 0 }}>{s.sub}</p>
               </div>
             ))}
           </div>

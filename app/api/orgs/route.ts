@@ -1,6 +1,18 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
+export async function PATCH(request: NextRequest) {
+  const { userId, orgId } = await auth();
+  if (!userId || !orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { name } = await request.json();
+  if (!name?.trim()) return NextResponse.json({ error: "Name required" }, { status: 400 });
+
+  const client = await clerkClient();
+  await client.organizations.updateOrganization(orgId, { name: name.trim() });
+  return NextResponse.json({ ok: true });
+}
+
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function POST(request: NextRequest) {
