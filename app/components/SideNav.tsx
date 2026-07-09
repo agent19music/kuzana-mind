@@ -1,6 +1,5 @@
 "use client";
 
-import { useClerk, useOrganization, useUser } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -65,10 +64,7 @@ function NavLink({ href, icon, label, active }: { href: string; icon: React.Reac
 export default function SideNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { organization, membership } = useOrganization();
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const isAdmin = membership?.role === "org:admin";
+  const isAdmin = false;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -145,19 +141,19 @@ export default function SideNav() {
           {/* Identity card */}
           <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid #f0f0f0" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <OrgAvatar imageUrl={organization?.imageUrl} name={organization?.name} />
+              <OrgAvatar imageUrl={null} name="Athena" />
               <div style={{ minWidth: 0 }}>
                 <p style={{
                   fontSize: 13.5, fontWeight: 400, color: "#1a1a1a",
                   margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>
-                  {organization?.name ?? "—"}
+                  Athena
                 </p>
                 <p style={{
                   fontSize: 12, color: "#a3a3a3",
                   margin: "1px 0 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>
-                  {user?.primaryEmailAddress?.emailAddress ?? ""}
+                  {""}
                 </p>
               </div>
             </div>
@@ -180,7 +176,7 @@ export default function SideNav() {
             )}
             <button
               className="account-menu-item"
-              onClick={() => signOut({ redirectUrl: "/" })}
+              onClick={() => router.push("/")}
             >
               <span style={{ display: "flex", color: "#888" }}>{I.signout}</span>
               Log out
@@ -203,7 +199,7 @@ export default function SideNav() {
             textAlign: "left",
           }}
         >
-          <OrgAvatar imageUrl={organization?.imageUrl} name={organization?.name} />
+          <OrgAvatar imageUrl={null} name="Athena" />
           <span style={{
             fontSize: 13,
             fontWeight: 400,
@@ -214,7 +210,7 @@ export default function SideNav() {
             whiteSpace: "nowrap",
             letterSpacing: "-0.01em",
           }}>
-            {organization?.name ?? "Account"}
+            {"Athena"}
           </span>
           <span style={{
             display: "flex",
