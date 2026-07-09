@@ -196,28 +196,19 @@ export default function Integrations() {
             >
               Wikis, databases, and team pages — all searchable from day one.
             </p>
-            <a
-              href="/api/auth/notion"
+            <span
               style={{
                 alignSelf: "flex-start",
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: 400,
-                color: "var(--foreground)",
-                border: "1px solid var(--brand-olive, #6b7c3f)",
+                color: "var(--foreground-subtle)",
+                background: "var(--inset-surface)",
                 borderRadius: 9999,
-                padding: "5px 14px",
-                textDecoration: "none",
-                transition: "background 0.15s",
+                padding: "3px 10px",
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "var(--inset-surface)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
             >
-              Connect Notion
-            </a>
+              Coming soon
+            </span>
           </motion.div>
         </div>
 

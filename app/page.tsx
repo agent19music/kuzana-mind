@@ -5,6 +5,7 @@ import Hero from "./components/Hero";
 import HowItWorks from "./components/HowItWorks";
 import Integrations from "./components/Integrations";
 import Nav from "./components/Nav";
+import PricingSection from "./components/PricingSection";
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
         <FeaturesSection />
         <Integrations />
         <HowItWorks />
+        <PricingSection />
         <CallToAction />
       </main>
       <Footer />

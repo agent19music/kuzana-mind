@@ -1,9 +1,16 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 import AthenaBadge from "./AthenaBadge";
+import VideoModal from "./VideoModal";
 
 export default function Hero() {
+  const [videoOpen, setVideoOpen] = useState(false);
+
   return (
+    <>
     <section
       style={{
         position: "relative",
@@ -162,12 +169,12 @@ export default function Hero() {
           >
             Get started
           </Link>
-          <a
-            href="#how-it-works"
+          <button
+            onClick={() => setVideoOpen(true)}
             style={{
-              textDecoration: "none",
               display: "inline-flex",
               alignItems: "center",
+              gap: 10,
               height: 52,
               borderRadius: 9999,
               background: "transparent",
@@ -176,15 +183,21 @@ export default function Hero() {
               fontWeight: 400,
               padding: "0 32px",
               border: "1px solid rgba(255,255,255,0.55)",
-              transition:
-                "border-color 200ms ease-out, background 200ms ease-out",
+              cursor: "pointer",
+              transition: "border-color 200ms ease-out, background 200ms ease-out",
             }}
             className="hover:!border-transparent hover:!bg-white/10"
           >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M3 1.5L12.5 7L3 12.5V1.5Z" fill="white" />
+            </svg>
             See how it works
-          </a>
+          </button>
         </div>
       </div>
     </section>
+
+    {videoOpen && <VideoModal onClose={() => setVideoOpen(false)} />}
+    </>
   );
 }

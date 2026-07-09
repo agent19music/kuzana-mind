@@ -2,6 +2,12 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Nav — hide text links on mobile, show only logo + CTA */
+.nav-desktop-link { display: none; }
+@media (min-width: 640px) {
+  .nav-desktop-link { display: inline; }
+}
+
 /* Dashboard hover states (server components can't use onMouse*) */
 .dashboard-action-link:hover { background: #FAFAFA; }
 
