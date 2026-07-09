@@ -34,13 +34,17 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Build & push image via Cloud Build
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+
+      - name: Build & push image
         run: |
-          gcloud builds submit backend/ \
-            --tag=${{ env.IMAGE }}:${{ github.sha }} \
-            --tag=${{ env.IMAGE }}:latest \
-            --region=${{ env.REGION }} \
-            --project=${{ env.PROJECT_ID }}
+          docker build \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            backend/
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
 
       - name: Run database migrations
         run: |
