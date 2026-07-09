@@ -48,15 +48,18 @@ jobs:
 
       - name: Run database migrations
         run: |
+          gcloud run jobs describe migration \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} >/dev/null 2>&1 || \
           gcloud run jobs create migration \
             --image=${{ env.IMAGE }}:${{ github.sha }} \
             --command=alembic \
             --args=upgrade,head \
             --set-secrets=DATABASE_URL=DATABASE_URL:latest \
-            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:kuzana-brain-db \
+            --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:kuzana-brain-db \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
-            --max-retries=0 2>/dev/null || \
+            --max-retries=0
           gcloud run jobs update migration \
             --image=${{ env.IMAGE }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
