@@ -28,24 +28,37 @@ async def get_embedding(text_input: str) -> list[float]:
     return await asyncio.to_thread(_embed_sync, text_input)
 
 
-async def similarity_search(query_embedding: list[float], top_k: int = 5) -> list[dict]:
+async def similarity_search(
+    query_embedding: list[float],
+    org_id: str | None = None,
+    top_k: int = 5,
+) -> list[dict]:
     embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-    sql = text("""
-        SELECT
-            id,
-            doc_id,
-            title,
-            chunk_text,
-            metadata,
-            1 - (embedding <=> cast(:embedding AS vector)) AS similarity_score
-        FROM documents
-        ORDER BY embedding <=> cast(:embedding AS vector)
-        LIMIT :top_k
-    """)
+    if org_id:
+        sql = text("""
+            SELECT
+                id, doc_id, title, chunk_text, metadata, source_type,
+                1 - (embedding <=> cast(:embedding AS vector)) AS similarity_score
+            FROM documents
+            WHERE org_id = :org_id
+            ORDER BY embedding <=> cast(:embedding AS vector)
+            LIMIT :top_k
+        """)
+        params = {"embedding": embedding_str, "top_k": top_k, "org_id": org_id}
+    else:
+        sql = text("""
+            SELECT
+                id, doc_id, title, chunk_text, metadata, source_type,
+                1 - (embedding <=> cast(:embedding AS vector)) AS similarity_score
+            FROM documents
+            ORDER BY embedding <=> cast(:embedding AS vector)
+            LIMIT :top_k
+        """)
+        params = {"embedding": embedding_str, "top_k": top_k}
 
     with get_session() as session:
-        rows = session.execute(sql, {"embedding": embedding_str, "top_k": top_k}).mappings().all()
+        rows = session.execute(sql, params).mappings().all()
 
     return [dict(row) for row in rows]
 
@@ -69,9 +82,9 @@ def staff_fallback(query: str) -> dict | None:
     return scored[0][1]
 
 
-async def answer_query(query: str) -> dict:
+async def answer_query(query: str, org_id: str | None = None) -> dict:
     query_embedding = await get_embedding(query)
-    results = await similarity_search(query_embedding)
+    results = await similarity_search(query_embedding, org_id=org_id)
 
     # ----------------------------------------------------------------
     # Core branch: document hit vs. staff fallback
@@ -83,6 +96,7 @@ async def answer_query(query: str) -> dict:
             "type": "document",
             "source_title": best["title"],
             "source_doc_id": best["doc_id"],
+            "source_type": best.get("source_type", "mock"),
             "similarity_score": round(best["similarity_score"], 4),
         }
 

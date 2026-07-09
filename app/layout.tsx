@@ -1,13 +1,9 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
+import { cn } from "@/lib/utils";
 
-const manrope = Manrope({
-  subsets: ["latin"],
-  variable: "--font-manrope",
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
+const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "Athena — Know instantly.",
@@ -19,10 +15,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={manrope.variable}>
-      <body>
-        {children}
-      </body>
+    <html lang="en" className={cn("font-sans", geist.variable)} data-theme="light" style={{ colorScheme: "light" }}>
+      <body>{children}</body>
     </html>
   );
 }

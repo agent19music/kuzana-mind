@@ -1,8 +1,8 @@
-# Kuzana Organisation Structure
+# Athena Organisation Structure
 
 ## Overview
 
-Kuzana is a 11-person team across six departments. All departments report directly to the CEO except Client Success, which sits under Sales, and IT, which sits under Engineering.
+Athena is a 11-person team across six departments. All departments report directly to the CEO except Client Success, which sits under Sales, and IT, which sits under Engineering.
 
 ---
 
@@ -33,7 +33,7 @@ Code reviews are mandatory before any merge to main.
 **Amara Osei** — Chief People Officer  
 Owns recruitment, onboarding, offboarding, leave management, performance reviews, and company culture initiatives.
 
-HR queries (leave requests, contracts, payroll): email amara.osei@kuzana.co or use the #hr-requests Slack channel.
+HR queries (leave requests, contracts, payroll): email amara.osei@athena.co or use the #hr-requests Slack channel.
 
 ---
 

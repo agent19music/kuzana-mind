@@ -1,4 +1,4 @@
-# Kuzana Brain
+# Athena
 
 AI knowledge assistant for African professional teams. Ask a question, get an answer from your company docs — or the right person to ask.
 
@@ -8,7 +8,7 @@ Built for 10–200 person teams running on Google Workspace. No new knowledge ba
 
 ## How it works
 
-1. Point Kuzana at a Google Drive folder (or drop markdown files in `backend/sample_docs/`)
+1. Point Athena at a Google Drive folder (or drop markdown files in `backend/sample_docs/`)
 2. Call `POST /ingest` — docs are chunked, embedded with Gemini, stored in pgvector
 3. Your team asks questions in plain English through the chat UI
 4. If the answer is in your docs → returns the exact text, source cited
@@ -98,11 +98,14 @@ docker-compose up
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `GEMINI_API_KEY` | Yes | — | Google Gemini API key |
-| `DATABASE_URL` | Yes | `postgresql://kuzana:kuzana@db:5432/kuzana_brain` | PostgreSQL connection string |
+| `DATABASE_URL` | Yes | `postgresql://athena:athena@db:5432/athena_brain` | PostgreSQL connection string |
 | `USE_MOCK` | No | `true` | Load from `sample_docs/` instead of Drive |
 | `SIMILARITY_THRESHOLD` | No | `0.75` | Cosine similarity cutoff |
 | `PUBLIC_DOC_IDS` | No | `""` | Comma-separated public Google Doc IDs |
 | `CORS_ORIGINS` | No | `*` | Comma-separated allowed origins |
+| `AUTOSEND_API_KEY` | No | — | API key for waitlist confirmation emails |
+| `AUTOSEND_TEMPLATE_ID` | No | — | Template ID for waitlist confirmation emails |
+| `AUTOSEND_FROM_EMAIL` | No | — | Sender email address for waitlist emails |
 
 ### Frontend
 
@@ -137,13 +140,13 @@ Secrets (`GEMINI_API_KEY`, `DATABASE_URL`) are stored in Secret Manager. The Clo
 
 ```bash
 gcloud builds submit backend/ \
-  --tag=europe-west1-docker.pkg.dev/mavuno-493709/kuzana-brain/backend:latest \
+  --tag=europe-west1-docker.pkg.dev/mavuno-493709/athena-brain/backend:latest \
   --region=europe-west1
 
-gcloud run deploy kuzana-brain-backend \
-  --image=europe-west1-docker.pkg.dev/mavuno-493709/kuzana-brain/backend:latest \
+gcloud run deploy athena-brain-backend \
+  --image=europe-west1-docker.pkg.dev/mavuno-493709/athena-brain/backend:latest \
   --region=europe-west1 \
-  --add-cloudsql-instances=mavuno-493709:europe-west1:kuzana-brain-db \
+  --add-cloudsql-instances=mavuno-493709:europe-west1:athena-brain-db \
   --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest \
   --set-env-vars=USE_MOCK=true \
   --port=8000

@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import DocumentCard from "../components/chat/DocumentCard";
 import StaffCard from "../components/chat/StaffCard";
+import DashboardShell from "../components/DashboardShell";
 
 
 const API_URL = "/api";
@@ -14,6 +13,7 @@ type ChatResponse = {
   type: "document" | "staff_fallback";
   source_title?: string;
   source_doc_id?: string;
+  source_type?: "google_docs" | "notion" | "mock";
   staff_name?: string;
   staff_email?: string;
   staff_domain?: string;
@@ -122,62 +122,16 @@ export default function ChatPage() {
   const isEmpty = messages.length === 0;
 
   return (
+    <DashboardShell>
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100svh",
+        flex: 1,
+        overflow: "hidden",
         background: "var(--background)",
       }}
     >
-      {/* Top nav */}
-      <header
-        style={{
-          height: 64,
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 var(--space-6)",
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            color: "var(--foreground-muted)",
-            fontSize: 14,
-            fontWeight: 500,
-            textDecoration: "none",
-            transition: "color 200ms ease-out",
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M10 13L5 8l5-5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Back
-        </Link>
-
-        <Image
-          src="/kuzana-mind-logo.png"
-          alt="Athena"
-          width={64}
-          height={64}
-          style={{ display: "block" }}
-        />
-
-        <div style={{ width: 48 }} />
-      </header>
 
       {/* Messages */}
       <div
@@ -206,7 +160,7 @@ export default function ChatPage() {
                 <h1
                   style={{
                     fontSize: "clamp(28px, 4vw, 40px)",
-                    fontWeight: 700,
+                    fontWeight: 400,
                     letterSpacing: "-0.025em",
                     lineHeight: 1.15,
                     color: "var(--foreground)",
@@ -246,7 +200,7 @@ export default function ChatPage() {
                       borderRadius: 9999,
                       padding: "10px 18px",
                       fontSize: 14,
-                      fontWeight: 500,
+                      fontWeight: 400,
                       color: "var(--foreground-muted)",
                       cursor: "pointer",
                       transition: "background 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out",
@@ -300,6 +254,7 @@ export default function ChatPage() {
                       answer={msg.data.answer}
                       sourceTitle={msg.data.source_title}
                       sourceDocId={msg.data.source_doc_id}
+                      sourceType={msg.data.source_type}
                       similarityScore={msg.data.similarity_score}
                     />
                   ) : (
@@ -393,7 +348,7 @@ export default function ChatPage() {
               cursor: input.trim() && !loading ? "pointer" : "not-allowed",
               padding: "0 20px",
               fontSize: 14,
-              fontWeight: 500,
+              fontWeight: 400,
               fontFamily: "var(--font-sans)",
               transition: "background 200ms ease-out, color 200ms ease-out",
             }}
@@ -413,5 +368,6 @@ export default function ChatPage() {
         </p>
       </div>
     </div>
+    </DashboardShell>
   );
 }

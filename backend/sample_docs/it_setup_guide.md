@@ -2,12 +2,12 @@
 
 ## Overview
 
-This guide covers the standard setup process for all new Kuzana devices and the process for requesting access to tools and systems.
+This guide covers the standard setup process for all new Athena devices and the process for requesting access to tools and systems.
 
 ## Laptop Setup
 
 1. Power on your laptop. It is pre-enrolled in Google Workspace MDM.
-2. Sign in with your Kuzana Google account (@kuzana.co).
+2. Sign in with your Athena Google account (@athena.co).
 3. Enable FileVault (Mac) or BitLocker (Windows) disk encryption immediately.
 4. Install required software from the approved app list in the IT portal.
 5. Connect to the company VPN using the credentials sent by IT on day one.
@@ -15,12 +15,12 @@ This guide covers the standard setup process for all new Kuzana devices and the 
 ## VPN Access
 
 - Download Tailscale from the IT portal.
-- Use the invite link sent to your Kuzana email to join the company network.
+- Use the invite link sent to your Athena email to join the company network.
 - VPN must be active when accessing internal systems outside the office.
 
 ## Requesting Tool Access
 
-1. Go to the IT portal at it.kuzana.co.
+1. Go to the IT portal at it.athena.co.
 2. Navigate to Access Requests and select the tool you need.
 3. Provide a business justification and your manager's email for approval.
 4. Standard tools are provisioned within 24 hours. Specialist tools may take up to 3 business days.
@@ -33,4 +33,4 @@ This guide covers the standard setup process for all new Kuzana devices and the 
 
 ## Getting Help
 
-Raise an IT support ticket at it.kuzana.co/support or message #it-support on Slack.
+Raise an IT support ticket at it.athena.co/support or message #it-support on Slack.

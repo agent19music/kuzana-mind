@@ -1,7 +1,7 @@
 [
   {
     "name": "Chidi Okeke",
-    "email": "chidi.okeke@kuzana.co",
+    "email": "chidi.okeke@athena.co",
     "title": "Chief Executive Officer",
     "department": "Executive",
     "reports_to": null,
@@ -11,7 +11,7 @@
   },
   {
     "name": "Siyanda Nkosi",
-    "email": "siyanda.nkosi@kuzana.co",
+    "email": "siyanda.nkosi@athena.co",
     "title": "Chief Technology Officer",
     "department": "Engineering",
     "reports_to": "Chidi Okeke",
@@ -21,7 +21,7 @@
   },
   {
     "name": "Amara Osei",
-    "email": "amara.osei@kuzana.co",
+    "email": "amara.osei@athena.co",
     "title": "Chief People Officer",
     "department": "People & HR",
     "reports_to": "Chidi Okeke",
@@ -31,7 +31,7 @@
   },
   {
     "name": "David Kariuki",
-    "email": "david.kariuki@kuzana.co",
+    "email": "david.kariuki@athena.co",
     "title": "Chief Financial Officer",
     "department": "Finance",
     "reports_to": "Chidi Okeke",
@@ -41,7 +41,7 @@
   },
   {
     "name": "Fatima Al-Hassan",
-    "email": "fatima.alhassan@kuzana.co",
+    "email": "fatima.alhassan@athena.co",
     "title": "VP of Sales",
     "department": "Sales",
     "reports_to": "Chidi Okeke",
@@ -51,7 +51,7 @@
   },
   {
     "name": "Kofi Mensah",
-    "email": "kofi.mensah@kuzana.co",
+    "email": "kofi.mensah@athena.co",
     "title": "Head of Client Success",
     "department": "Client Success",
     "reports_to": "Fatima Al-Hassan",
@@ -61,7 +61,7 @@
   },
   {
     "name": "Zanele Mokoena",
-    "email": "zanele.mokoena@kuzana.co",
+    "email": "zanele.mokoena@athena.co",
     "title": "General Counsel",
     "department": "Legal",
     "reports_to": "Chidi Okeke",
@@ -71,7 +71,7 @@
   },
   {
     "name": "Naledi Dlamini",
-    "email": "naledi.dlamini@kuzana.co",
+    "email": "naledi.dlamini@athena.co",
     "title": "IT Manager",
     "department": "IT & Systems",
     "reports_to": "Siyanda Nkosi",
@@ -81,7 +81,7 @@
   },
   {
     "name": "Tariq Osman",
-    "email": "tariq.osman@kuzana.co",
+    "email": "tariq.osman@athena.co",
     "title": "Senior Software Engineer",
     "department": "Engineering",
     "reports_to": "Siyanda Nkosi",
@@ -91,7 +91,7 @@
   },
   {
     "name": "Amina Diallo",
-    "email": "amina.diallo@kuzana.co",
+    "email": "amina.diallo@athena.co",
     "title": "Product Designer",
     "department": "Design",
     "reports_to": "Siyanda Nkosi",
@@ -101,7 +101,7 @@
   },
   {
     "name": "Blessing Okafor",
-    "email": "blessing.okafor@kuzana.co",
+    "email": "blessing.okafor@athena.co",
     "title": "Marketing Manager",
     "department": "Marketing",
     "reports_to": "Chidi Okeke",

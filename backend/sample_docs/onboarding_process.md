@@ -26,4 +26,4 @@ All new employees must complete the onboarding process within their first two we
 
 ## Contacts
 
-For any onboarding questions, contact the HR team at hr@kuzana.co.
+For any onboarding questions, contact the HR team at hr@athena.co.

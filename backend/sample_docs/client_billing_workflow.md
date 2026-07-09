@@ -6,7 +6,7 @@ All client invoices are generated and tracked through the finance system. The bi
 
 ## Invoice Generation
 
-1. Log in to the finance system at finance.kuzana.co.
+1. Log in to the finance system at finance.athena.co.
 2. Navigate to Clients and select the relevant account.
 3. Click Generate Invoice and review the line items pulled from the project tracker.
 4. Add any manual adjustments with a note explaining the reason.
