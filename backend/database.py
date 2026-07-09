@@ -57,14 +57,23 @@ class DocumentChunk(Base):
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class Waitlist(Base):
+    __tablename__ = "waitlist"
+
+    id         = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    name       = Column(String, nullable=False)
+    email      = Column(String, unique=True, nullable=False, index=True)
+    company    = Column(String, nullable=False)
+    role       = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 def init_db():
+    # Schema is managed by Alembic. This only ensures the vector extension exists
+    # for local dev runs where alembic upgrade head hasn't been called yet.
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.commit()
-    Base.metadata.create_all(engine)
-
-    # MVP: skip vector index — exact nearest-neighbor is fast for <100 docs.
-    # Add HNSW index when scaling: CREATE INDEX ... USING hnsw (embedding vector_cosine_ops)
 
 
 def get_session() -> Session:

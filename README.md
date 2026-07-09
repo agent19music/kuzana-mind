@@ -103,6 +103,9 @@ docker-compose up
 | `SIMILARITY_THRESHOLD` | No | `0.75` | Cosine similarity cutoff |
 | `PUBLIC_DOC_IDS` | No | `""` | Comma-separated public Google Doc IDs |
 | `CORS_ORIGINS` | No | `*` | Comma-separated allowed origins |
+| `AUTOSEND_API_KEY` | No | — | API key for waitlist confirmation emails |
+| `AUTOSEND_TEMPLATE_ID` | No | — | Template ID for waitlist confirmation emails |
+| `AUTOSEND_FROM_EMAIL` | No | — | Sender email address for waitlist emails |
 
 ### Frontend
 

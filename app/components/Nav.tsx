@@ -98,7 +98,7 @@ export default function Nav() {
           </a>
           {!isSignedIn ? (
             <Link
-              href="/register"
+              href="/waitlist"
               style={{
                 textDecoration: "none",
                 height: 44,

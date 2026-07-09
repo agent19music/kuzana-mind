@@ -65,7 +65,7 @@ export default function AthenaBadge() {
             />
           </span>
           <span className="text-sm font-medium tracking-wide text-white">
-            Backed by Athena
+            Backed by Kuzana
           </span>
         </div>
       </div>

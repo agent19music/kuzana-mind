@@ -244,3 +244,67 @@ async def clerk_webhook(request: Request):
     print(f"Clerk webhook received: {event_type}")
     # Phase 4: handle organization.created, organizationMembership.created, etc.
     return {"received": True}
+
+
+# ---------------------------------------------------------------------------
+# Waitlist
+# ---------------------------------------------------------------------------
+
+class WaitlistRequest(BaseModel):
+    name: str
+    email: str
+    company: str
+    role: str
+
+
+@app.post("/waitlist")
+async def join_waitlist(body: WaitlistRequest):
+    import httpx
+    from database import Waitlist, get_session
+    from sqlalchemy.exc import IntegrityError
+
+    if "@" not in body.email or "." not in body.email:
+        raise HTTPException(status_code=400, detail="Invalid email format")
+
+    email = body.email.lower().strip()
+
+    with get_session() as session:
+        try:
+            waitlist_entry = Waitlist(
+                name=body.name.strip(),
+                email=email,
+                company=body.company.strip(),
+                role=body.role.strip()
+            )
+            session.add(waitlist_entry)
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            return {"status": "duplicate", "message": "You're already on the waitlist!"}
+
+    AUTOSEND_API_KEY = os.getenv("AUTOSEND_API_KEY", "")
+    AUTOSEND_TEMPLATE_ID = os.getenv("AUTOSEND_TEMPLATE_ID", "")
+
+    if AUTOSEND_API_KEY and AUTOSEND_TEMPLATE_ID:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.autosend.com/v1/mails/send",
+                headers={
+                    "Authorization": f"Bearer {AUTOSEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "to": email,
+                    "template_id": AUTOSEND_TEMPLATE_ID,
+                    "dynamicData": {
+                        "name": body.name.strip(),
+                        "company": body.company.strip(),
+                        "role": body.role.strip()
+                    }
+                },
+            )
+
+        if resp.status_code >= 400:
+            print(f"Autosend error {resp.status_code}: {resp.text}")
+
+    return {"status": "success", "message": "You're on the waitlist!"}

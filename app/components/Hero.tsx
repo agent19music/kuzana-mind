@@ -144,7 +144,7 @@ export default function Hero() {
           }}
         >
           <Link
-            href="/register"
+            href="/waitlist"
             style={{
               textDecoration: "none",
               display: "inline-flex",

@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
 
 export default function CallToAction() {
-  const { isSignedIn } = useAuth();
 
   return (
     <section
@@ -51,7 +49,7 @@ export default function CallToAction() {
         </p>
 
         <Link
-          href={isSignedIn ? "/dashboard" : "/register"}
+          href="/waitlist"
           style={{
             textDecoration: "none",
             display: "inline-flex",
@@ -67,7 +65,7 @@ export default function CallToAction() {
           }}
           className="hover:!bg-[#e5e5e5]"
         >
-          {isSignedIn ? "Go to dashboard" : "Get started"}
+          Get started
         </Link>
 
         <p
