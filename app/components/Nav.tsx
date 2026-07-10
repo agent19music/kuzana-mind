@@ -49,11 +49,11 @@ export default function Nav() {
           <Image
             src="/athena-mind-logo.png"
             alt="Athena"
-            width={36}
+            width={66}
             height={36}
             style={{
-              width: 36,
               height: 36,
+              width: "auto",
               filter: scrolled ? "none" : "invert(1)",
               transition: "filter 200ms ease-out",
             }}

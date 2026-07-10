@@ -116,7 +116,7 @@ export default function PricingSection() {
             maxWidth: 480,
           }}
         >
-          Simple pricing, no surprises.
+          Pricing that scales with your team.
         </motion.h2>
 
         <motion.p
