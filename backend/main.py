@@ -284,8 +284,10 @@ async def join_waitlist(body: WaitlistRequest):
 
     AUTOSEND_API_KEY = os.getenv("AUTOSEND_API_KEY", "")
     AUTOSEND_TEMPLATE_ID = os.getenv("AUTOSEND_TEMPLATE_ID", "")
+    AUTOSEND_FROM_EMAIL = os.getenv("AUTOSEND_FROM_EMAIL", "")
+    AUTOSEND_FROM_NAME = os.getenv("AUTOSEND_FROM_NAME", "Athena")
 
-    if AUTOSEND_API_KEY and AUTOSEND_TEMPLATE_ID:
+    if AUTOSEND_API_KEY and AUTOSEND_TEMPLATE_ID and AUTOSEND_FROM_EMAIL:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://api.autosend.com/v1/mails/send",
@@ -294,8 +296,9 @@ async def join_waitlist(body: WaitlistRequest):
                     "Content-Type": "application/json",
                 },
                 json={
-                    "to": email,
-                    "template_id": AUTOSEND_TEMPLATE_ID,
+                    "to": {"email": email, "name": body.name.strip()},
+                    "from": {"email": AUTOSEND_FROM_EMAIL, "name": AUTOSEND_FROM_NAME},
+                    "templateId": AUTOSEND_TEMPLATE_ID,
                     "dynamicData": {
                         "name": body.name.strip(),
                         "company": body.company.strip(),
@@ -306,5 +309,7 @@ async def join_waitlist(body: WaitlistRequest):
 
         if resp.status_code >= 400:
             print(f"Autosend error {resp.status_code}: {resp.text}")
+    else:
+        print("Autosend skipped: missing AUTOSEND_API_KEY, AUTOSEND_TEMPLATE_ID, or AUTOSEND_FROM_EMAIL")
 
     return {"status": "success", "message": "You're on the waitlist!"}
