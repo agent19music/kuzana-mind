@@ -78,7 +78,7 @@ jobs:
             --platform=managed \
             --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:kuzana-brain-db \
-            --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest,AUTOSEND_API_KEY=AUTOSEND_API_KEY:latest,AUTOSEND_TEMPLATE_ID=AUTOSEND_TEMPLATE_ID:latest \
+            --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest,AUTOSEND_API_KEY=AUTOSEND_API_KEY:latest,AUTOSEND_TEMPLATE_ID=AUTOSEND_TEMPLATE_ID:latest,AUTOSEND_FROM_EMAIL=AUTOSEND_FROM_EMAIL:latest \
             --set-env-vars=USE_MOCK=true \
             --port=8000 \
             --memory=512Mi \
