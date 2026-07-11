@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +19,8 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn("font-sans", geist.variable)} data-theme="light" style={{ colorScheme: "light" }}>
       <body>{children}</body>
+      <Analytics />
+      <GoogleAnalytics gaId="G-NFHB1M7VJY" />
     </html>
   );
 }

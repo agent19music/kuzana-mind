@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 
 interface Props {
   onClose: () => void;
 }
 
 export default function VideoModal({ onClose }: Props) {
+  const [loaded, setLoaded] = useState(false);
+
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -47,6 +49,9 @@ export default function VideoModal({ onClose }: Props) {
         @keyframes modal-scale-in {
           from { opacity: 0; transform: scale(0.97) translateY(8px); }
           to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes spinner-spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
 
@@ -97,20 +102,46 @@ export default function VideoModal({ onClose }: Props) {
             height: 0,
             borderRadius: 10,
             overflow: "hidden",
-            background: "#000",
+            background: "#111",
           }}
         >
+          {/* Spinner — hidden once iframe fires onLoad */}
+          {!loaded && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  border: "2.5px solid rgba(255,255,255,0.15)",
+                  borderTopColor: "rgba(255,255,255,0.75)",
+                  animation: "spinner-spin 700ms linear infinite",
+                }}
+              />
+            </div>
+          )}
           <iframe
             src="https://www.youtube-nocookie.com/embed/xjsCk_T-qdA?autoplay=1&rel=0&modestbranding=1&color=white"
             title="Athena demo"
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
+            onLoad={() => setLoaded(true)}
             style={{
               position: "absolute",
               inset: 0,
               width: "100%",
               height: "100%",
               border: "none",
+              opacity: loaded ? 1 : 0,
+              transition: "opacity 300ms ease-out",
             }}
           />
         </div>
