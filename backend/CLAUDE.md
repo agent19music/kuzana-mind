@@ -9,8 +9,8 @@ FastAPI + pgvector service. Handles auth verification, ingestion, embedding, and
 | Layer | Choice | Notes |
 |---|---|---|
 | Framework | FastAPI | Async, Pydantic v2 models |
-| Database | PostgreSQL 16 + pgvector | IVFFlat index on `embedding` column |
-| Embeddings | Google Gemini `text-embedding-005` | 768-dim. `RETRIEVAL_DOCUMENT` for ingest, `RETRIEVAL_QUERY` for queries |
+| Database | PostgreSQL 16 + pgvector | HNSW (cosine) index on `embedding` — migration `9b4d3e7a1c30` |
+| Embeddings | Google Gemini `gemini-embedding-2` @ 768 | Shared `embeddings.py`: batched + retried (backoff), `RETRIEVAL_DOCUMENT` for ingest, `RETRIEVAL_QUERY` for queries |
 | Chunking | Header split + `RecursiveCharacterTextSplitter` | Header split for structure, then bound each section to `CHUNK_SIZE_CHARS` (~3000) with `CHUNK_OVERLAP_CHARS` overlap; header breadcrumb kept in metadata + prefixed to chunk text |
 | ORM | SQLAlchemy 2.0 (sync session via `get_session`) | Async not used — embedding calls use `asyncio.to_thread` |
 | Auth | Clerk JWT (RS256 via JWKS) + X-API-Key | Two paths — see Auth section below |
@@ -108,9 +108,9 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
 ## Retrieval Logic
 
 `retrieval.py::answer_query(query, org_id)`:
-1. Embed the query with `RETRIEVAL_QUERY` task type
-2. Cosine similarity search via pgvector, filtered by `org_id`
-3. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.65`) → return matching chunk
+1. Embed the query with `RETRIEVAL_QUERY` task type (`embeddings.embed_query`)
+2. Cosine similarity search via pgvector (HNSW index), org-scoped via `session_for_org`
+3. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.75`) → return matching chunk
 4. Else → `staff_fallback()` topic-matches against `staff_directory.json`
 
 The answer is the raw chunk text, not LLM-synthesised. Fast and traceable.

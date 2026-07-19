@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from auth import AuthContext, require_auth, require_backend_secret
 from extract import SUPPORTED, extract_text
 from database import DocumentChunk, session_for_org
+from embeddings import embed_documents
 from ingest import run_ingestion
 from retrieval import answer_query
 
@@ -151,7 +152,7 @@ async def upload_files(
     org_id comes from the verified Clerk JWT — never from the request body.
     """
     from pathlib import Path
-    from ingest import chunk_document, embed_text
+    from ingest import chunk_document
 
     org_id = auth_ctx.clerk_org_id
 
@@ -199,14 +200,19 @@ async def upload_files(
     for doc in docs:
         all_chunks.extend(chunk_document(doc))
 
+    embeddings = await embed_documents([c["chunk_text"] for c in all_chunks])
+
+    seen_docs: set[str] = set()
     with session_for_org(org_id) as session:
         upserted = 0
-        for chunk in all_chunks:
-            embedding = await embed_text(chunk["chunk_text"])
-
-            session.query(DocumentChunk).filter_by(
-                doc_id=chunk["doc_id"], org_id=org_id
-            ).delete()
+        for chunk, embedding in zip(all_chunks, embeddings):
+            # Clear a doc's old chunks once, on first sighting — deleting inside
+            # the loop would autoflush and drop chunks just inserted for the doc.
+            if chunk["doc_id"] not in seen_docs:
+                session.query(DocumentChunk).filter_by(
+                    doc_id=chunk["doc_id"], org_id=org_id
+                ).delete()
+                seen_docs.add(chunk["doc_id"])
 
             session.add(DocumentChunk(
                 org_id=org_id,

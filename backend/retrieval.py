@@ -1,31 +1,14 @@
-import asyncio
 import json
 import os
 from pathlib import Path
 
-from google import genai
-from google.genai import types
 from sqlalchemy import text
 
 from database import session_for_org
+from embeddings import embed_query
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 STAFF_DIRECTORY_PATH = Path(__file__).parent / "staff_directory.json"
-
-_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-
-def _embed_sync(text_input: str) -> list[float]:
-    response = _client.models.embed_content(
-        model="gemini-embedding-2",
-        contents=text_input,
-        config=types.EmbedContentConfig(output_dimensionality=768),
-    )
-    return response.embeddings[0].values
-
-
-async def get_embedding(text_input: str) -> list[float]:
-    return await asyncio.to_thread(_embed_sync, text_input)
 
 
 async def similarity_search(
@@ -81,7 +64,7 @@ def staff_fallback(query: str) -> dict | None:
 async def answer_query(query: str, org_id: str) -> dict:
     if not org_id:
         raise ValueError("answer_query requires an org_id")
-    query_embedding = await get_embedding(query)
+    query_embedding = await embed_query(query)
     results = await similarity_search(query_embedding, org_id=org_id)
 
     # ----------------------------------------------------------------

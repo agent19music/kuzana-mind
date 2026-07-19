@@ -1,15 +1,13 @@
-import asyncio
 import json
 import os
 import re
 from pathlib import Path
 
 import httpx
-from google import genai
-from google.genai import types
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 from database import DocumentChunk, get_session, session_for_org
+from embeddings import embed_documents
 
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 SAMPLE_DOCS_PATH = Path(__file__).parent / "sample_docs"
@@ -24,7 +22,6 @@ def _parse_doc_id(id_or_url: str) -> str:
     match = re.search(r"/document/d/([a-zA-Z0-9_-]+)", id_or_url)
     return match.group(1) if match else id_or_url.strip()
 
-_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 HEADERS_TO_SPLIT_ON = [
     ("#", "h1"),
@@ -387,23 +384,6 @@ def chunk_document(doc: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Embedding
-# ---------------------------------------------------------------------------
-
-def _embed_sync(text_input: str) -> list[float]:
-    response = _client.models.embed_content(
-        model="gemini-embedding-2",
-        contents=text_input,
-        config=types.EmbedContentConfig(output_dimensionality=768),
-    )
-    return response.embeddings[0].values
-
-
-async def embed_text(text_input: str) -> list[float]:
-    return await asyncio.to_thread(_embed_sync, text_input)
-
-
-# ---------------------------------------------------------------------------
 # Main ingestion entry point
 # ---------------------------------------------------------------------------
 
@@ -465,20 +445,21 @@ async def run_ingestion(
 
     print(f"Produced {len(all_chunks)} chunks. Embedding and upserting...")
 
+    # Embed all chunks up front — batched + retried inside embed_documents.
+    embeddings = await embed_documents([c["chunk_text"] for c in all_chunks])
+
     # Delete-then-insert is always org-scoped; RLS on the scoped session enforces
     # this at the DB even if the explicit filter were dropped.
     seen_docs: set[str] = set()
     with session_for_org(org_id) as session:
         upserted = 0
-        for chunk in all_chunks:
+        for chunk, embedding in zip(all_chunks, embeddings):
             # Clear a doc's old chunks once, on first sighting, not per chunk.
             if chunk["doc_id"] not in seen_docs:
                 session.query(DocumentChunk).filter_by(
                     doc_id=chunk["doc_id"], org_id=org_id
                 ).delete()
                 seen_docs.add(chunk["doc_id"])
-
-            embedding = await embed_text(chunk["chunk_text"])
 
             session.add(DocumentChunk(
                 org_id=org_id,
