@@ -11,7 +11,7 @@ FastAPI + pgvector service. Handles auth verification, ingestion, embedding, and
 | Framework | FastAPI | Async, Pydantic v2 models |
 | Database | PostgreSQL 16 + pgvector | IVFFlat index on `embedding` column |
 | Embeddings | Google Gemini `text-embedding-005` | 768-dim. `RETRIEVAL_DOCUMENT` for ingest, `RETRIEVAL_QUERY` for queries |
-| Chunking | LangChain `MarkdownHeaderTextSplitter` | Splits on `#`, `##`, `###` |
+| Chunking | Header split + `RecursiveCharacterTextSplitter` | Header split for structure, then bound each section to `CHUNK_SIZE_CHARS` (~3000) with `CHUNK_OVERLAP_CHARS` overlap; header breadcrumb kept in metadata + prefixed to chunk text |
 | ORM | SQLAlchemy 2.0 (sync session via `get_session`) | Async not used — embedding calls use `asyncio.to_thread` |
 | Auth | Clerk JWT (RS256 via JWKS) + X-API-Key | Two paths — see Auth section below |
 
@@ -45,7 +45,7 @@ Two FastAPI dependencies in `auth.py`:
 
 ### `require_backend_secret` — server-to-server
 - Reads `X-API-Key` header, compares to `BACKEND_API_SECRET` env var
-- If `BACKEND_API_SECRET` is unset → skipped (open in dev)
+- **Fails closed:** if `BACKEND_API_SECRET` is unset the endpoint returns 500 (disabled), never open
 - Used on: `POST /ingest`
 
 ### `AuthContext`
@@ -67,10 +67,15 @@ JWKS URL is auto-derived from `CLERK_PUBLISHABLE_KEY` (base64 decode the suffix)
 
 ## Multi-Tenancy
 
-- `DocumentChunk.org_id` tags every chunk with the Clerk org ID
-- `retrieval.py::similarity_search()` always filters `WHERE org_id = :org_id` when `org_id` is provided
-- `ingest.py::run_ingestion()` scopes deletions to the org before re-inserting
-- `database.py::Organization` stores per-org config: `notion_api_key`, `notion_root_page_id`, `public_doc_ids` (JSONB), `logo_url`
+Isolation is enforced at **two layers** — the app never falls back to an unscoped query:
+
+1. **App layer (guardrails):** `require_auth` rejects any token with no `org_id` (403). `similarity_search`, `answer_query`, and `run_ingestion` all require a non-empty `org_id` and raise otherwise. There is no "if org_id else global" branch anymore.
+2. **Database layer (RLS backstop):** `documents` has row-level security. Org-scoped requests go through `database.session_for_org(org_id)`, which inside one transaction does `SET LOCAL ROLE athena_app` (a non-superuser role RLS is enforced against — the app's superuser connection bypasses RLS) and `set_config('athena.org_id', org_id, true)`. The `org_isolation` policy restricts every read/write to that org even if a `WHERE org_id` filter is ever dropped. Migrations: `7f2a1b9c4d10` (NOT NULL + FK + composite index), `8a3c2d5e6f20` (role + RLS policy).
+
+> **Production note:** RLS is only a real backstop because queries run under a non-superuser role via `SET LOCAL ROLE`. If you change the connection strategy, keep the app off a superuser/table-owner role for tenant-data queries.
+
+- `DocumentChunk.org_id` — NOT NULL, FK → `organizations.clerk_org_id` `ON DELETE CASCADE` (org offboarding cascades chunks). Composite index `(org_id, doc_id)`.
+- `database.py::Organization` per-org config: `notion_api_key`, `notion_root_page_id`, `public_doc_ids` (JSONB), `drive_folder_id`, `logo_url`.
 
 ---
 
@@ -87,14 +92,16 @@ JWKS URL is auto-derived from `CLERK_PUBLISHABLE_KEY` (base64 decode the suffix)
    - Converts Notion blocks to markdown for chunking
    - Internal integration token (`ntn_...`)
 
-3. **Google Drive (service account)** — post-MVP
-   - Set `USE_MOCK=false` + `DRIVE_FOLDER_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON`
+3. **Google Drive (service account)**
+   - `GOOGLE_SERVICE_ACCOUNT_JSON` is a deployment secret (all tenants share one service account)
+   - Folder is **per-org**: `drive_folder_id` in the `/ingest` body → `organizations.drive_folder_id`. `DRIVE_FOLDER_ID` env is only a single-tenant local-dev fallback
+   - Each org shares its Drive folder with the service-account email as Viewer
 
 4. **Local mock files** (`USE_MOCK=true`)
    - Reads `sample_docs/*.md`
    - Default is now `false` — set `USE_MOCK=true` only for local testing without real keys
 
-Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body is optional (env vars used if omitted).
+Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include `org_id` — ingestion is always tenant-scoped and returns 400 without it.
 
 ---
 

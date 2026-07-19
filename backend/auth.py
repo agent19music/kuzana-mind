@@ -143,9 +143,18 @@ async def require_auth(
     except jwt.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
+    org_id = payload.get("org_id")
+    if not org_id:
+        # Every protected endpoint is org-scoped. A token with no active org
+        # must never fall through to an unscoped (cross-tenant) query path.
+        raise HTTPException(
+            status_code=403,
+            detail="No active organization on this session. Select or create an org first.",
+        )
+
     return AuthContext(
         clerk_user_id=payload["sub"],
-        clerk_org_id=payload.get("org_id"),
+        clerk_org_id=org_id,
         org_role=payload.get("org_role"),
     )
 
@@ -155,10 +164,14 @@ def require_backend_secret(
 ) -> None:
     """
     Verifies X-API-Key header for server-to-server calls (Next.js routes, cron).
-    If BACKEND_API_SECRET is not configured, the check is skipped (dev mode).
+    Fails closed: if BACKEND_API_SECRET is not configured, the endpoint is
+    rejected rather than left open. Set BACKEND_API_SECRET in every environment.
     """
     if not BACKEND_API_SECRET:
-        return  # Not configured — open in dev
+        raise HTTPException(
+            status_code=500,
+            detail="BACKEND_API_SECRET is not configured; server-to-server endpoints are disabled.",
+        )
 
     if x_api_key != BACKEND_API_SECRET:
         raise HTTPException(status_code=401, detail="Invalid API key.")

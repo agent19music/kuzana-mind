@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 from sqlalchemy import text
 
-from database import get_session
+from database import session_for_org
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 STAFF_DIRECTORY_PATH = Path(__file__).parent / "staff_directory.json"
@@ -30,34 +30,30 @@ async def get_embedding(text_input: str) -> list[float]:
 
 async def similarity_search(
     query_embedding: list[float],
-    org_id: str | None = None,
+    org_id: str,
     top_k: int = 5,
 ) -> list[dict]:
+    # org_id is mandatory: an unscoped vector search would read across every
+    # tenant. There is no fallback branch by design.
+    if not org_id:
+        raise ValueError("similarity_search requires an org_id")
+
     embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-    if org_id:
-        sql = text("""
-            SELECT
-                id, doc_id, title, chunk_text, metadata, source_type,
-                1 - (embedding <=> cast(:embedding AS vector)) AS similarity_score
-            FROM documents
-            WHERE org_id = :org_id
-            ORDER BY embedding <=> cast(:embedding AS vector)
-            LIMIT :top_k
-        """)
-        params = {"embedding": embedding_str, "top_k": top_k, "org_id": org_id}
-    else:
-        sql = text("""
-            SELECT
-                id, doc_id, title, chunk_text, metadata, source_type,
-                1 - (embedding <=> cast(:embedding AS vector)) AS similarity_score
-            FROM documents
-            ORDER BY embedding <=> cast(:embedding AS vector)
-            LIMIT :top_k
-        """)
-        params = {"embedding": embedding_str, "top_k": top_k}
+    # The explicit WHERE is belt-and-suspenders; RLS on the org-scoped session
+    # already restricts rows to this tenant even without it.
+    sql = text("""
+        SELECT
+            id, doc_id, title, chunk_text, metadata, source_type,
+            1 - (embedding <=> cast(:embedding AS vector)) AS similarity_score
+        FROM documents
+        WHERE org_id = :org_id
+        ORDER BY embedding <=> cast(:embedding AS vector)
+        LIMIT :top_k
+    """)
+    params = {"embedding": embedding_str, "top_k": top_k, "org_id": org_id}
 
-    with get_session() as session:
+    with session_for_org(org_id) as session:
         rows = session.execute(sql, params).mappings().all()
 
     return [dict(row) for row in rows]
@@ -82,7 +78,9 @@ def staff_fallback(query: str) -> dict | None:
     return scored[0][1]
 
 
-async def answer_query(query: str, org_id: str | None = None) -> dict:
+async def answer_query(query: str, org_id: str) -> dict:
+    if not org_id:
+        raise ValueError("answer_query requires an org_id")
     query_embedding = await get_embedding(query)
     results = await similarity_search(query_embedding, org_id=org_id)
 

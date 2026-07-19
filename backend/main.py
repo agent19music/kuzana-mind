@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from auth import AuthContext, require_auth, require_backend_secret
 from extract import SUPPORTED, extract_text
-from database import DocumentChunk, get_session
+from database import DocumentChunk, session_for_org
 from ingest import run_ingestion
 from retrieval import answer_query
 
@@ -63,8 +63,7 @@ def health():
 @app.get("/stats")
 def stats(auth_ctx: AuthContext = Depends(require_auth)):
     org_id = auth_ctx.clerk_org_id
-    db = get_session()
-    try:
+    with session_for_org(org_id) as db:
         chunk_count = db.query(DocumentChunk).filter(DocumentChunk.org_id == org_id).count()
         last_chunk = (
             db.query(DocumentChunk)
@@ -78,8 +77,6 @@ def stats(auth_ctx: AuthContext = Depends(require_auth)):
             .distinct()
             .all()
         )
-    finally:
-        db.close()
 
     return {
         "chunk_count": chunk_count,
@@ -110,6 +107,7 @@ class IngestRequest(BaseModel):
     notion_api_key: str | None = None
     notion_root_page_id: str | None = None
     public_doc_ids: list[str] | None = None
+    drive_folder_id: str | None = None
 
 
 @app.post("/ingest")
@@ -118,11 +116,12 @@ async def ingest(
     _: None = Depends(require_backend_secret),
 ):
     """
-    Trigger the ingestion pipeline.
-    Called with no body for env-var-based runs (cron, CLI).
-    Called with a body when an org connects via the onboarding form.
+    Trigger the ingestion pipeline for a single organization.
+    Always requires an org_id — ingestion writes tenant-scoped data.
     """
     req = request or IngestRequest()
+    if not req.org_id:
+        raise HTTPException(status_code=400, detail="org_id is required for ingestion.")
     result = await run_ingestion(
         org_id=req.org_id,
         org_name=req.org_name,
@@ -130,6 +129,7 @@ async def ingest(
         notion_api_key=req.notion_api_key,
         notion_root_page_id=req.notion_root_page_id,
         public_doc_ids=req.public_doc_ids,
+        drive_folder_id=req.drive_folder_id,
     )
     return result
 
@@ -199,7 +199,7 @@ async def upload_files(
     for doc in docs:
         all_chunks.extend(chunk_document(doc))
 
-    with get_session() as session:
+    with session_for_org(org_id) as session:
         upserted = 0
         for chunk in all_chunks:
             embedding = await embed_text(chunk["chunk_text"])
