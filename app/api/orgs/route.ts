@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
     notion_api_key: notionApiKey?.trim() || null,
     notion_root_page_id: notionRootPageId?.trim() || null,
     public_doc_ids: Array.isArray(publicDocIds) ? publicDocIds.filter(Boolean) : [],
+    trigger: "onboarding",
   };
 
   const backendApiSecret = process.env.BACKEND_API_SECRET ?? "";

@@ -97,7 +97,7 @@
 @media (hover: hover) and (pointer: fine) {
   .btn-pill:hover { border-color: #c4c4c4; }
 }
-.btn-pill:active { transform: scale(0.97); }
+.btn-pill:active { transform: scale(0.96); }
 
 /* Inline edit row — pencil fades in on hover */
 .edit-row { display: flex; align-items: center; gap: 10px; }
@@ -108,6 +108,11 @@
   color: #a3a3a3;
   cursor: pointer;
   flex-shrink: 0;
+  min-width: 40px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 @media (hover: hover) and (pointer: fine) {
   .edit-row:hover .pencil-icon { opacity: 1; transform: translateX(0); }

@@ -6,9 +6,17 @@ from sqlalchemy import text
 
 from database import session_for_org
 from embeddings import embed_query
+from generation import condense_question, synthesize_answer
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 STAFF_DIRECTORY_PATH = Path(__file__).parent / "staff_directory.json"
+
+
+def _provider_doc_id(doc_id: str) -> str:
+    """Reverse namespaced_doc_id ("{source}:{org}:{provider_id}") back to the raw
+    provider id, so the UI source link (docs.google.com/document/d/<id>) resolves.
+    Provider ids never contain ':', so the part after the second colon is safe."""
+    return doc_id.split(":", 2)[-1]
 
 
 async def similarity_search(
@@ -61,10 +69,15 @@ def staff_fallback(query: str) -> dict | None:
     return scored[0][1]
 
 
-async def answer_query(query: str, org_id: str) -> dict:
+async def answer_query(
+    query: str, org_id: str, history: list[dict] | None = None
+) -> dict:
     if not org_id:
         raise ValueError("answer_query requires an org_id")
-    query_embedding = await embed_query(query)
+    # Multi-turn: rewrite a context-dependent follow-up into a standalone query
+    # so retrieval finds the right chunk ("how much notice?" → "...for leave?").
+    search_query = await condense_question(query, history)
+    query_embedding = await embed_query(search_query)
     results = await similarity_search(query_embedding, org_id=org_id)
 
     # ----------------------------------------------------------------
@@ -72,11 +85,14 @@ async def answer_query(query: str, org_id: str) -> dict:
     # ----------------------------------------------------------------
     if results and results[0]["similarity_score"] >= SIMILARITY_THRESHOLD:
         best = results[0]
+        # Synthesise a plain-language answer from the chunk instead of returning
+        # the raw (often legalese) text. The source card still cites the chunk.
+        answer = await synthesize_answer(query, best["chunk_text"], history)
         return {
-            "answer": best["chunk_text"],
+            "answer": answer,
             "type": "document",
             "source_title": best["title"],
-            "source_doc_id": best["doc_id"],
+            "source_doc_id": _provider_doc_id(best["doc_id"]),
             "source_type": best.get("source_type", "mock"),
             "similarity_score": round(best["similarity_score"], 4),
         }

@@ -3,12 +3,43 @@ import { redirect } from "next/navigation";
 import DashboardShell from "../../components/DashboardShell";
 import ConnectionsClient from "./ConnectionsClient";
 
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+type OrgStats = { chunk_count: number; last_synced: string | null; source_types: string[] };
+type Job = {
+  id: string;
+  status: string;
+  trigger: string;
+  documents: number;
+  chunks: number;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
 export default async function ConnectionsPage() {
-  const { userId, orgId, orgRole } = await auth();
+  const { userId, orgId, orgRole, getToken } = await auth();
 
   if (!userId) redirect("/login");
   if (!orgId) redirect("/onboarding");
   if (orgRole !== "org:admin") redirect("/dashboard");
+
+  let stats: OrgStats | null = null;
+  let jobs: Job[] = [];
+  try {
+    const token = await getToken();
+    if (token) {
+      const headers = { Authorization: `Bearer ${token}` };
+      const [statsRes, statusRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/stats`, { headers, cache: "no-store" }),
+        fetch(`${BACKEND_URL}/ingest/status`, { headers, cache: "no-store" }),
+      ]);
+      if (statsRes.ok) stats = await statsRes.json();
+      if (statusRes.ok) jobs = (await statusRes.json()).jobs ?? [];
+    }
+  } catch {
+    /* backend unreachable — client renders with empty state */
+  }
 
   return (
     <DashboardShell>
@@ -22,7 +53,7 @@ export default async function ConnectionsPage() {
               Manage knowledge sources. Connected services are automatically re-indexed on sync.
             </p>
           </div>
-          <ConnectionsClient />
+          <ConnectionsClient stats={stats} jobs={jobs} />
         </div>
       </main>
     </DashboardShell>

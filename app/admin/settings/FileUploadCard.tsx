@@ -97,6 +97,7 @@ export default function FileUploadCard() {
           <button
             onClick={() => fileRef.current?.click()}
             disabled={isUploading}
+            className="btn-pill"
             style={{
               fontSize: 13,
               color: "#1a1a1a",
@@ -123,6 +124,7 @@ export default function FileUploadCard() {
           <button
             onClick={() => folderRef.current?.click()}
             disabled={isUploading}
+            className="btn-pill"
             style={{
               fontSize: 13,
               color: "#1a1a1a",

@@ -45,8 +45,8 @@
 
 ### What is mocked / post-MVP
 - Google Drive service account connector (flag: `USE_MOCK=true`)
-- Avalanche on-chain audit trail (spec complete at `avalanche-audit-spec.md`)
-- Notion OAuth Path B (spec complete at `notion-oauth-spec.md`)
+- Avalanche on-chain audit trail (spec complete at `docs/specs/avalanche-audit-spec.md`)
+- Notion OAuth Path B (spec complete at `docs/specs/notion-oauth-spec.md`)
 - Staff management UI (`/admin/staff`, invite flow, JSON bulk upload)
 - Admin settings page (`/admin/settings`, re-trigger ingest)
 
@@ -108,9 +108,23 @@ noc-ava/
 │       ├── FeaturesSection.tsx
 │       └── Integrations.tsx
 │
-├── auth-and-orgs-spec.md              # Full auth + staff management spec
-├── avalanche-audit-spec.md            # On-chain audit trail spec
-└── notion-oauth-spec.md               # Notion OAuth Path B spec
+└── docs/                              # All project documentation (see docs/README.md)
+    ├── specs/                         # Feature & integration specs
+    │   ├── auth-and-orgs-spec.md      # Full auth + staff management spec
+    │   ├── avalanche-audit-spec.md    # On-chain audit trail spec
+    │   ├── file-upload-spec.md        # File upload / extraction spec
+    │   ├── google-workspace-spec.md   # Google Drive service-account spec
+    │   └── notion-oauth-spec.md       # Notion OAuth Path B spec
+    ├── planning/                      # Build plans & runbooks
+    │   ├── ENTERPRISE-PIPELINE-PLAN.md
+    │   ├── RESTORE-CLERK.md
+    │   └── DEV-PATH.md                # What's built vs. what's left
+    ├── design/                        # Design language & briefings
+    │   ├── design-guide.md
+    │   ├── mavuno-dsign.md
+    │   └── HELLO-STITCH.md
+    └── product/
+        └── athena-pitch.md            # Pitch deck & scripts
 ```
 
 ---

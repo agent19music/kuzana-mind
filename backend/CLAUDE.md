@@ -25,7 +25,7 @@ backend/
 ├── auth.py              # Clerk JWT verification + require_backend_secret FastAPI dep
 ├── retrieval.py         # Embedding query → pgvector search → staff fallback
 ├── ingest.py            # Document loading (Notion / public docs / mock) → chunk → embed → upsert
-├── database.py          # SQLAlchemy models: DocumentChunk, Organization, OrganizationMember
+├── database.py          # SQLAlchemy models: DocumentChunk, Organization, OrganizationMember, IngestJob
 ├── staff_directory.json # Static staff fallback — never hallucinate, always route here
 └── sample_docs/         # Local markdown files used when USE_MOCK=true
 ```
@@ -46,7 +46,11 @@ Two FastAPI dependencies in `auth.py`:
 ### `require_backend_secret` — server-to-server
 - Reads `X-API-Key` header, compares to `BACKEND_API_SECRET` env var
 - **Fails closed:** if `BACKEND_API_SECRET` is unset the endpoint returns 500 (disabled), never open
-- Used on: `POST /ingest`
+- Used on: `POST /ingest`, `POST /webhooks/clerk`
+
+### Ingestion status & webhooks
+- `GET /ingest/status` (`require_auth`, org-scoped) — recent `ingest_jobs` rows for the caller's org. Powers the connections page + dashboard activity.
+- `POST /webhooks/clerk` (`require_backend_secret`) — applies verified Clerk org/membership events to the DB. Svix signature is verified upstream in the Next.js `/api/webhooks/clerk` route, which then forwards `{type, data}` here behind the shared secret.
 
 ### `AuthContext`
 ```python
@@ -125,7 +129,11 @@ The answer is the raw chunk text, not LLM-synthesised. Fast and traceable.
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
 | `CLERK_PUBLISHABLE_KEY` | Yes | — | Clerk publishable key — used to derive JWKS URL |
 | `CLERK_JWKS_URL` | No | auto-derived | Override JWKS endpoint directly |
-| `BACKEND_API_SECRET` | Yes (prod) | — | Shared secret for Next.js → backend calls (X-API-Key) |
+| `CLERK_ISSUER` | No | auto-derived | Expected `iss` claim; derived from the frontend API origin. Set to override |
+| `CLERK_AUDIENCE` | No | — | If set, `aud` is verified. Leave unset for default Clerk session tokens (no `aud`) |
+| `CLERK_AUTHORIZED_PARTIES` | No | — | Comma-separated allowed `azp` values (your app origins). If set, a token minted for another origin is rejected |
+| `BACKEND_API_SECRET` | Yes (prod) | — | Shared secret for Next.js → backend calls (X-API-Key). Guards `/ingest` and `/webhooks/clerk` |
+| `CLERK_WEBHOOK_SECRET` | Yes (webhooks) | — | Svix signing secret. Verified in the Next.js `/api/webhooks/clerk` route, which forwards verified events to the backend `/webhooks/clerk` |
 | `SIMILARITY_THRESHOLD` | No | `0.65` | Cosine similarity cutoff |
 | `USE_MOCK` | No | `false` | Load from `sample_docs/` instead of real sources |
 | `PUBLIC_DOC_IDS` | No | `""` | Comma-separated public Google Doc IDs or URLs (global fallback) |

@@ -5,6 +5,7 @@ import DashboardShell from "../components/DashboardShell";
 import GradientBanner from "../components/GradientBanner";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_API_SECRET = process.env.BACKEND_API_SECRET ?? "";
 
 type OrgStats = {
   chunk_count: number;
@@ -12,13 +13,39 @@ type OrgStats = {
   source_types: string[];
 };
 
-const ACTIVITY = [
-  { label: "Knowledge sync completed", sub: "247 new chunks indexed", time: "2h ago", dot: "#22c55e" },
-  { label: "Company Handbook updated", sub: "Re-indexed via Notion", time: "5h ago", dot: "#22c55e" },
-  { label: "3 new members joined", sub: "Invited by admin", time: "1d ago", dot: "#60a5fa" },
-  { label: "Q2 OKRs uploaded", sub: "PDF · 156 KB", time: "2d ago", dot: "#a78bfa" },
-  { label: "Benefits Guide indexed", sub: "2,400 chunks · Google Docs", time: "4d ago", dot: "#22c55e" },
-];
+type Job = {
+  id: string;
+  status: string;
+  trigger: string;
+  documents: number;
+  chunks: number;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+function relativeTime(iso: string | null): string {
+  if (!iso) return "";
+  const secs = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (secs < 60) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+function jobToActivity(j: Job) {
+  const time = relativeTime(j.finished_at ?? j.started_at);
+  if (j.status === "failed") {
+    return { label: "Sync failed", sub: j.error ?? "Ingestion error", time, dot: "#ef4444" };
+  }
+  if (j.status === "running") {
+    return { label: "Sync in progress", sub: "Indexing sources", time, dot: "#60a5fa" };
+  }
+  const src = `${j.documents} doc${j.documents === 1 ? "" : "s"} · ${j.chunks.toLocaleString()} chunks`;
+  return { label: "Knowledge sync completed", sub: src, time, dot: "#22c55e" };
+}
 
 export default async function DashboardPage() {
   const { userId, orgId, orgRole, getToken } = await auth();
@@ -26,25 +53,41 @@ export default async function DashboardPage() {
   if (!userId) redirect("/login");
   if (!orgId) redirect("/onboarding");
 
-  const client = await clerkClient();
-  const [org, memberships] = await Promise.all([
-    client.organizations.getOrganization({ organizationId: orgId }),
-    client.organizations.getOrganizationMembershipList({ organizationId: orgId, limit: 100 }),
-  ]);
   const isAdmin = orgRole === "org:admin";
-  const memberCount = memberships.totalCount ?? memberships.data.length;
 
-  let stats: OrgStats | null = null;
+  // Fetch Clerk org data — wrap so a Clerk API error (wrong keys, deleted org)
+  // never crashes the page; fall back to what auth() already gave us.
+  let memberCount = 1;
   try {
-    const token = await getToken();
-    if (token) {
-      const r = await fetch(`${BACKEND_URL}/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      if (r.ok) stats = await r.json();
-    }
-  } catch { /* stats stay null */ }
+    const client = await clerkClient();
+    const memberships = await client.organizations.getOrganizationMembershipList({
+      organizationId: orgId,
+      limit: 100,
+    });
+    memberCount = memberships.totalCount ?? memberships.data.length;
+  } catch { /* use fallback */ }
+
+  // Use server-to-server auth for backend reads — avoids the JWT org_id issue
+  // where getToken() can return a token without org_id when the Clerk session
+  // doesn't have an active org embedded in the JWT claims.
+  let stats: OrgStats | null = null;
+  let jobs: Job[] = [];
+  if (BACKEND_API_SECRET) {
+    try {
+      const headers = {
+        "X-API-Key": BACKEND_API_SECRET,
+        "X-Org-Id": orgId,
+      };
+      const [statsRes, statusRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/stats`, { headers, cache: "no-store" }),
+        fetch(`${BACKEND_URL}/ingest/status`, { headers, cache: "no-store" }),
+      ]);
+      if (statsRes.ok) stats = await statsRes.json();
+      if (statusRes.ok) jobs = (await statusRes.json()).jobs ?? [];
+    } catch { /* stats/jobs stay empty */ }
+  }
+
+  const activity = jobs.map(jobToActivity);
 
   const lastSynced = stats?.last_synced
     ? new Date(stats.last_synced).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
@@ -54,21 +97,34 @@ export default async function DashboardPage() {
 
   return (
     <DashboardShell>
+      <style>{`
+        .dashboard-wrap { padding: 56px 48px 80px; }
+        .stat-grid { grid-template-columns: repeat(4, 1fr); }
+        .stat-card-featured { min-height: 320px; }
+        .dashboard-lower { grid-template-columns: 1fr 320px; gap: 32px; }
+
+        @media (max-width: 768px) {
+          .dashboard-wrap { padding: 24px 16px 64px; }
+          .stat-grid { grid-template-columns: repeat(2, 1fr); }
+          .stat-card-featured { min-height: auto; }
+          .dashboard-lower { grid-template-columns: 1fr; gap: 24px; }
+        }
+      `}</style>
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
+        <div className="dashboard-wrap" style={{ maxWidth: 880, margin: "0 auto" }}>
 
           {/* Page heading */}
-          <div style={{ marginBottom: 48 }}>
-            <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.2, margin: 0 }}>
+          <div style={{ marginBottom: 40 }}>
+            <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.1, margin: 0 }}>
               Overview
             </h1>
           </div>
 
           {/* Stat row */}
           <div
+            className="stat-grid"
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
               gap: 1,
               background: "#E8E8E8",
               border: "1px solid #E8E8E8",
@@ -86,11 +142,11 @@ export default async function DashboardPage() {
             ].map((s, i) => (
               <div
                 key={s.label}
+                className={i === 1 ? "stat-card-featured" : undefined}
                 style={{
                   position: "relative",
                   background: i === 1 ? "#b8e4ff" : "#fff",
-                  padding: "24px 28px",
-                  minHeight: i === 1 ? 320 : undefined,
+                  padding: "20px 22px",
                   display: "flex",
                   flexDirection: "column",
                   gap: 4,
@@ -101,16 +157,16 @@ export default async function DashboardPage() {
                 <p style={{ position: "relative", fontSize: 12, fontWeight: 400, color: "#aaa", margin: 0, letterSpacing: "-0.01em" }}>
                   {s.label}
                 </p>
-                <p style={{ position: "relative", fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: 0, lineHeight: 1.15 }}>
+                <p style={{ position: "relative", fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: 0, lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>
                   {s.value}
                 </p>
-                <p style={{ position: "relative", fontSize: 12, color: "#bbb", margin: 0 }}>{s.sub}</p>
+                <p style={{ position: "relative", fontSize: 12, color: "#bbb", margin: 0, lineHeight: 1.4 }}>{s.sub}</p>
               </div>
             ))}
           </div>
 
           {/* Two-column lower section */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 32, alignItems: "start" }}>
+          <div className="dashboard-lower" style={{ display: "grid", alignItems: "start" }}>
 
             {/* Recent activity */}
             <div>
@@ -133,7 +189,11 @@ export default async function DashboardPage() {
                   boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
                 }}
               >
-                {ACTIVITY.map((a, i) => (
+                {activity.length === 0 ? (
+                  <div style={{ padding: "20px", fontSize: 13, color: "#999", lineHeight: 1.5 }}>
+                    No ingestion runs yet. Connect a source and sync to see activity here.
+                  </div>
+                ) : activity.map((a, i) => (
                   <div
                     key={i}
                     style={{
@@ -141,7 +201,7 @@ export default async function DashboardPage() {
                       alignItems: "center",
                       gap: 14,
                       padding: "14px 20px",
-                      borderBottom: i < ACTIVITY.length - 1 ? "1px solid #F3F3F3" : "none",
+                      borderBottom: i < activity.length - 1 ? "1px solid #F3F3F3" : "none",
                     }}
                   >
                     <span

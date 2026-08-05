@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, useAnimationFrame } from "framer-motion";
+import { useState } from "react";
 import DashboardShell from "../../components/DashboardShell";
 import GradientBanner from "../../components/GradientBanner";
 
-6
 const PLANS = [
   {
     id: "starter",
@@ -90,14 +88,26 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
             borderBottom: "1px solid #F0F0F0",
           }}
         >
-          <div>
-            <h2 style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: "4px 0 0" }}>
-              {plan.name} · {plan.price}/mo
-            </h2>
-          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
+            {plan.name} · {plan.price}/mo
+          </h2>
           <button
             onClick={onClose}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#ccc", lineHeight: 1, padding: 4 }}
+            className="btn-press"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 20,
+              color: "#ccc",
+              lineHeight: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 44,
+              height: 44,
+              borderRadius: 8,
+            }}
           >
             ×
           </button>
@@ -114,6 +124,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
             </p>
             <button
               onClick={onClose}
+              className="btn-press"
               style={{
                 background: "#111",
                 color: "#fff",
@@ -131,7 +142,6 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
           </div>
         ) : step === "review" ? (
           <div>
-            {/* What you get */}
             <div style={{ padding: "24px 28px", borderBottom: "1px solid #F0F0F0" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {[
@@ -152,21 +162,21 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
               </div>
             </div>
 
-            {/* Pricing summary */}
             <div style={{ padding: "20px 28px", borderBottom: "1px solid #F0F0F0", background: "#FAFAFA" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13.5, color: "#888" }}>Pro plan · per user / month</span>
-                <span style={{ fontSize: 13.5, fontWeight: 400, color: "#111" }}>{plan.price} / user / mo</span>
+                <span style={{ fontSize: 13.5, fontWeight: 400, color: "#111", fontVariantNumeric: "tabular-nums" }}>{plan.price} / user / mo</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13.5, color: "#888" }}>Billed today</span>
-                <span style={{ fontSize: 13.5, fontWeight: 400, color: "#111" }}>{plan.price}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 400, color: "#111", fontVariantNumeric: "tabular-nums" }}>{plan.price}</span>
               </div>
             </div>
 
             <div style={{ padding: "20px 28px" }}>
               <button
                 onClick={() => setStep("payment")}
+                className="btn-press"
                 style={{
                   width: "100%",
                   background: "#2563EB",
@@ -189,7 +199,6 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
             </div>
           </div>
         ) : (
-          /* Payment step */
           <div style={{ padding: "24px 28px" }}>
             <p style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Payment details</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
@@ -203,6 +212,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
                   value={card.number}
                   onChange={e => setCard(c => ({ ...c, number: e.target.value }))}
                   maxLength={19}
+                  className="payment-input"
                   style={{
                     width: "100%",
                     border: "1px solid #E2E2E2",
@@ -214,6 +224,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
                     background: "#FAFAFA",
                     boxSizing: "border-box",
                     fontFamily: "monospace",
+                    fontVariantNumeric: "tabular-nums",
                   }}
                 />
               </div>
@@ -228,6 +239,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
                     value={card.expiry}
                     onChange={e => setCard(c => ({ ...c, expiry: e.target.value }))}
                     maxLength={7}
+                    className="payment-input"
                     style={{
                       width: "100%",
                       border: "1px solid #E2E2E2",
@@ -239,6 +251,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
                       background: "#FAFAFA",
                       boxSizing: "border-box",
                       fontFamily: "monospace",
+                      fontVariantNumeric: "tabular-nums",
                     }}
                   />
                 </div>
@@ -252,6 +265,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
                     value={card.cvc}
                     onChange={e => setCard(c => ({ ...c, cvc: e.target.value }))}
                     maxLength={4}
+                    className="payment-input"
                     style={{
                       width: "100%",
                       border: "1px solid #E2E2E2",
@@ -263,6 +277,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
                       background: "#FAFAFA",
                       boxSizing: "border-box",
                       fontFamily: "monospace",
+                      fontVariantNumeric: "tabular-nums",
                     }}
                   />
                 </div>
@@ -270,6 +285,7 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
             </div>
             <button
               onClick={() => setStep("done")}
+              className="btn-press"
               style={{
                 width: "100%",
                 background: "#111",
@@ -296,8 +312,6 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
   );
 }
 
-
-
 function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => void }) {
   return (
     <div
@@ -315,23 +329,13 @@ function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => 
       {/* Animated gradient banner */}
       <div style={{ position: "relative", margin: "10px 10px 0", height: 120 }}>
         <GradientBanner />
-        {/* Overlay: plan name + badge + subtitle */}
         <div style={{ position: "absolute", inset: 0, padding: "18px 20px", display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
             <span style={{ fontSize: 22, fontWeight: 400, color: "#111", letterSpacing: "-0.02em" }}>Pro</span>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 400,
-                color: "#555",
-                background: "rgba(0,0,0,0.08)",
-                borderRadius: 20,
-                padding: "3px 9px",
-              }}
-            >
+            <span style={{ fontSize: 11, fontWeight: 400, color: "#555", background: "rgba(0,0,0,0.08)", borderRadius: 20, padding: "3px 9px" }}>
               Popular
             </span>
           </div>
@@ -340,46 +344,39 @@ function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => 
       </div>
 
       {/* Body */}
-      <div style={{ padding: "24px 22px 22px", display: "flex", flexDirection: "column", flex: 1, gap: 0 }}>
-        {/* Price */}
+      <div style={{ padding: "24px 22px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
         <div style={{ marginBottom: 20 }}>
-          <span style={{ fontSize: 42, fontWeight: 400, letterSpacing: "-0.04em", color: "#111" }}>{plan.price}</span>
+          <span style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", fontVariantNumeric: "tabular-nums" }}>{plan.price}</span>
           <span style={{ fontSize: 13.5, color: "#999", marginLeft: 4 }}>/month, per user</span>
         </div>
 
-        {/* CTA */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, marginBottom: 28 }}>
+          {plan.features.map(f => (
+            <div key={f} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>
+              <span style={{ fontSize: 13, color: "#555" }}>{f}</span>
+            </div>
+          ))}
+        </div>
+
         <button
           onClick={onUpgrade}
+          className="btn-press"
           style={{
             width: "100%",
             background: "#111",
             color: "#fff",
             border: "none",
-            borderRadius: 10,
-            padding: "13px",
-            fontSize: 14,
+            borderRadius: 8,
+            padding: "11px",
+            fontSize: 13.5,
             fontWeight: 400,
             cursor: "pointer",
-            marginBottom: 24,
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.15)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
           }}
         >
-          Get Started
+          Get started
         </button>
-
-        {/* Features */}
-        <p style={{ fontSize: 13, color: "#111", fontWeight: 400, margin: "0 0 14px" }}>What&apos;s Included</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {plan.features.map(f => (
-            <div key={f} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {/* 4-point sparkle */}
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="#111">
-                <path d="M6.5 0 L7.2 5.8 L13 6.5 L7.2 7.2 L6.5 13 L5.8 7.2 L0 6.5 L5.8 5.8 Z" />
-              </svg>
-              <span style={{ fontSize: 13, color: "#555" }}>{f}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -387,17 +384,42 @@ function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => 
 
 export default function BillingPage() {
   const [modal, setModal] = useState<typeof PLANS[1] | null>(null);
+  const [activeTab, setActiveTab] = useState<"pro" | "enterprise">("pro");
 
   const used = { chunks: 1247, maxChunks: 2500, members: 12, maxMembers: 20 };
 
   return (
     <DashboardShell>
+      <style>{`
+        .billing-wrap { padding: 56px 48px 80px; }
+        .billing-plan-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
+        .billing-usage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .billing-plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 48px; }
+        .billing-plans-mobile { display: none; margin-bottom: 48px; }
+        .billing-history-row { display: grid; grid-template-columns: 120px 1fr 100px 80px; padding: 14px 24px; align-items: center; }
+        .billing-history-amount { }
+
+        .btn-press { transition: transform 150ms cubic-bezier(0.2, 0, 0, 1); }
+        .btn-press:active { transform: scale(0.96); }
+
+        @media (max-width: 768px) {
+          .billing-wrap { padding: 28px 20px 64px; }
+          .billing-plan-header { flex-direction: column; gap: 16px; align-items: stretch; }
+          .billing-usage-grid { grid-template-columns: 1fr; }
+          .billing-plans-grid { display: none; }
+          .billing-plans-mobile { display: block; }
+          .billing-history-row { grid-template-columns: 1fr auto; padding: 14px 16px; }
+          .billing-history-amount { display: none; }
+          .payment-input { font-size: 16px !important; }
+        }
+      `}</style>
+
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
+        <div className="billing-wrap" style={{ maxWidth: 880, margin: "0 auto" }}>
 
           {/* Header */}
           <div style={{ marginBottom: 48 }}>
-            <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.2, margin: 0 }}>
+            <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.1, margin: 0, textWrap: "balance" } as React.CSSProperties}>
               Billing
             </h1>
           </div>
@@ -413,14 +435,13 @@ export default function BillingPage() {
               boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
-              <div>
-                <p style={{ fontSize: 22, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
-                  Starter · Free
-                </p>
-              </div>
+            <div className="billing-plan-header">
+              <p style={{ fontSize: 22, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
+                Starter · Free
+              </p>
               <button
                 onClick={() => setModal(PLANS[1])}
+                className="btn-press"
                 style={{
                   background: "#2563EB",
                   color: "#fff",
@@ -432,6 +453,7 @@ export default function BillingPage() {
                   cursor: "pointer",
                   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.18), 0 1px 4px rgba(37,99,235,0.2)",
                   letterSpacing: "-0.01em",
+                  whiteSpace: "nowrap",
                 }}
               >
                 Upgrade to Pro
@@ -439,10 +461,10 @@ export default function BillingPage() {
             </div>
 
             {/* Usage bars */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            <div className="billing-usage-grid">
               {[
-                { label: "Document chunks", used: used.chunks, max: used.maxChunks, unit: "chunks" },
-                { label: "Team members", used: used.members, max: used.maxMembers, unit: "members" },
+                { label: "Document chunks", used: used.chunks, max: used.maxChunks },
+                { label: "Team members", used: used.members, max: used.maxMembers },
               ].map(bar => {
                 const pct = Math.min((bar.used / bar.max) * 100, 100);
                 const warn = pct > 75;
@@ -450,7 +472,7 @@ export default function BillingPage() {
                   <div key={bar.label}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                       <span style={{ fontSize: 12.5, color: "#888", fontWeight: 400 }}>{bar.label}</span>
-                      <span style={{ fontSize: 12.5, color: warn ? "#D97706" : "#aaa" }}>
+                      <span style={{ fontSize: 12.5, color: warn ? "#D97706" : "#aaa", fontVariantNumeric: "tabular-nums" }}>
                         {bar.used.toLocaleString()} / {bar.max.toLocaleString()}
                       </span>
                     </div>
@@ -474,10 +496,70 @@ export default function BillingPage() {
           </div>
 
           {/* Plan comparison */}
-          <h2 style={{ fontSize: 16, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", marginBottom: 20, textWrap: "balance" } as React.CSSProperties}>
             Plans
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 48 }}>
+
+          {/* Mobile: segmented tab + single card */}
+          <div className="billing-plans-mobile">
+            {/* Segmented control */}
+            <div style={{ display: "flex", background: "#F0F0F0", borderRadius: 10, padding: 3, marginBottom: 16 }}>
+              {(["pro", "enterprise"] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className="btn-press"
+                  style={{
+                    flex: 1,
+                    padding: "9px 0",
+                    borderRadius: 8,
+                    border: "none",
+                    fontSize: 14,
+                    fontWeight: 400,
+                    cursor: "pointer",
+                    background: activeTab === tab ? "#fff" : "transparent",
+                    color: activeTab === tab ? "#111" : "#888",
+                    boxShadow: activeTab === tab ? "0 1px 4px rgba(0,0,0,0.1)" : "none",
+                    transition: "background 150ms, color 150ms, box-shadow 150ms",
+                  }}
+                >
+                  {tab === "pro" ? "Pro" : "Custom"}
+                </button>
+              ))}
+            </div>
+
+            {/* Active plan card */}
+            {activeTab === "pro" ? (
+              <ProCard plan={PLANS[1]} onUpgrade={() => setModal(PLANS[1])} />
+            ) : (
+              <div style={{ background: "#fff", border: "1px solid #E8E8E8", borderRadius: 12, padding: "28px 24px", display: "flex", flexDirection: "column", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+                <p style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: "0 0 4px" }}>
+                  Custom
+                </p>
+                <p style={{ fontSize: 13, color: "#bbb", margin: "0 0 24px", lineHeight: 1.5 }}>
+                  Unlimited chunks · Unlimited members
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28, flex: 1 }}>
+                  {PLANS[2].features.map(f => (
+                    <div key={f} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>
+                      <span style={{ fontSize: 13, color: "#555" }}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+                <a
+                  href="mailto:hi@athena.app"
+                  className="btn-press"
+                  style={{ display: "block", textAlign: "center", fontSize: 13.5, fontWeight: 400, color: "#fff", background: "#111", border: "none", borderRadius: 8, padding: "11px", textDecoration: "none", cursor: "pointer", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)" }}
+                >
+                  Contact sales
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop: 3-column grid */}
+          <div className="billing-plans-grid">
             {PLANS.map(plan => plan.highlight ? (
               <ProCard key={plan.id} plan={plan} onUpgrade={() => setModal(plan)} />
             ) : (
@@ -490,18 +572,16 @@ export default function BillingPage() {
                   padding: "28px 24px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 0,
                   boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-                  position: "relative",
                 }}
               >
-                <p style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: "0 0 4px" }}>
+                <p style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}>
                   {plan.price}
                   {plan.priceMonthly !== null && plan.priceMonthly > 0 && (
                     <span style={{ fontSize: 14, fontWeight: 400, color: "#aaa" }}>/mo</span>
                   )}
                 </p>
-                <p style={{ fontSize: 13, color: "#bbb", margin: "0 0 24px" }}>
+                <p style={{ fontSize: 13, color: "#bbb", margin: "0 0 24px", lineHeight: 1.5 }}>
                   {plan.chunks} chunks · {plan.members} members
                 </p>
 
@@ -531,19 +611,20 @@ export default function BillingPage() {
                 ) : plan.priceMonthly === null ? (
                   <a
                     href="mailto:hi@athena.app"
+                    className="btn-press"
                     style={{
                       display: "block",
                       textAlign: "center",
                       fontSize: 13.5,
                       fontWeight: 400,
-                      color: "#444",
-                      background: "#F4F4F4",
-                      border: "1px solid #E2E2E2",
+                      color: "#fff",
+                      background: "#111",
+                      border: "none",
                       borderRadius: 8,
                       padding: "11px",
                       textDecoration: "none",
                       cursor: "pointer",
-                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)",
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
                     }}
                   >
                     Contact sales
@@ -551,6 +632,7 @@ export default function BillingPage() {
                 ) : (
                   <button
                     onClick={() => setModal(plan)}
+                    className="btn-press"
                     style={{
                       width: "100%",
                       fontSize: 13.5,
@@ -572,7 +654,7 @@ export default function BillingPage() {
           </div>
 
           {/* Billing history */}
-          <h2 style={{ fontSize: 16, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", marginBottom: 20, textWrap: "balance" } as React.CSSProperties}>
             Billing history
           </h2>
           <div
@@ -587,17 +669,14 @@ export default function BillingPage() {
             {BILLING_HISTORY.map((row, i) => (
               <div
                 key={i}
+                className="billing-history-row"
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "120px 1fr 100px 80px",
-                  padding: "14px 24px",
-                  alignItems: "center",
                   borderBottom: i < BILLING_HISTORY.length - 1 ? "1px solid #F6F6F6" : "none",
                 }}
               >
                 <span style={{ fontSize: 13, color: "#888" }}>{row.date}</span>
                 <span style={{ fontSize: 13.5, fontWeight: 400, color: "#222" }}>{row.description}</span>
-                <span style={{ fontSize: 13.5, fontWeight: 400, color: "#111" }}>{row.amount}</span>
+                <span className="billing-history-amount" style={{ fontSize: 13.5, fontWeight: 400, color: "#111", fontVariantNumeric: "tabular-nums" }}>{row.amount}</span>
                 <span
                   style={{
                     fontSize: 11,
@@ -607,6 +686,8 @@ export default function BillingPage() {
                     borderRadius: 20,
                     padding: "3px 8px",
                     textAlign: "center",
+                    whiteSpace: "nowrap",
+                    justifySelf: "end",
                   }}
                 >
                   {row.status}

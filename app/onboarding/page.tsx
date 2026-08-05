@@ -157,6 +157,15 @@ export default function OnboardingPage() {
 
   const hasExistingOrg = !!organization;
 
+  // Whether the user has filled in at least one knowledge source. Drives the
+  // existing-org CTA: nothing filled → "Skip" (go straight to the dashboard,
+  // connect sources later); at least one → "Connect sources".
+  const hasAnySource = !!(
+    notionApiKey.trim() ||
+    notionRootPageId.trim() ||
+    publicDocUrls.trim()
+  );
+
   return (
     <div
       style={{
@@ -349,8 +358,12 @@ export default function OnboardingPage() {
               }}
             >
               {submitting
-                ? hasExistingOrg ? "Saving…" : "Creating organisation…"
-                : hasExistingOrg ? "Connect sources" : "Create organisation"}
+                ? hasExistingOrg
+                  ? hasAnySource ? "Connecting…" : "Skipping…"
+                  : "Creating organisation…"
+                : hasExistingOrg
+                  ? hasAnySource ? "Connect sources" : "Skip"
+                  : "Create organisation"}
             </button>
           </form>
         </div>

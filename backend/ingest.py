@@ -23,6 +23,20 @@ def _parse_doc_id(id_or_url: str) -> str:
     return match.group(1) if match else id_or_url.strip()
 
 
+def namespaced_doc_id(source_type: str, org_id: str, provider_id: str) -> str:
+    """Namespace a source's native document id per org: {source}:{org}:{id}.
+
+    Two tenants ingesting the same public Google Doc or Notion page share the
+    provider's id. The `org_id` column + RLS isolate the rows themselves, but
+    the delete-then-insert upsert keys on `doc_id`, so an un-namespaced id lets
+    a re-ingest in one org delete another org's chunks for the same provider id
+    (and makes doc_id ambiguous across tenants). Namespacing keeps each tenant's
+    document set distinct while remaining deterministic, so re-ingest still
+    replaces exactly that org's chunks.
+    """
+    return f"{source_type}:{org_id}:{provider_id}"
+
+
 HEADERS_TO_SPLIT_ON = [
     ("#", "h1"),
     ("##", "h2"),
@@ -395,14 +409,18 @@ async def run_ingestion(
     notion_root_page_id: str | None = None,
     public_doc_ids: list[str] | None = None,
     drive_folder_id: str | None = None,
+    trigger: str = "manual",
 ) -> dict:
     # org_id is mandatory: chunks are tenant data and must never be written
     # unscoped. A missing org would otherwise create null-org rows visible to all.
     if not org_id:
         raise ValueError("run_ingestion requires an org_id")
 
-    # Upsert org record (also the FK target that document chunks reference).
-    from database import Organization
+    # Upsert org record (also the FK target that document chunks reference), and
+    # capture the org's *stored* config to fall back on. A re-sync (e.g. the admin
+    # "Sync now" button) sends only org_id — without this fallback it would ignore
+    # the org's saved Notion key / doc ids / Drive folder and index nothing.
+    from database import IngestJob, Organization
     with get_session() as session:
         org = session.query(Organization).filter_by(clerk_org_id=org_id).first()
         if org:
@@ -430,49 +448,83 @@ async def run_ingestion(
             )
             session.add(org)
         session.commit()
+        # Effective config: explicit per-request value wins, else the stored one.
+        eff_notion_key = notion_api_key or org.notion_api_key
+        eff_notion_root = notion_root_page_id or org.notion_root_page_id
+        eff_public_ids = public_doc_ids if public_doc_ids is not None else org.public_doc_ids
+        eff_drive_folder = drive_folder_id or org.drive_folder_id
 
-    docs = load_documents(
-        notion_api_key=notion_api_key,
-        notion_root_page_id=notion_root_page_id,
-        public_doc_ids=public_doc_ids,
-        drive_folder_id=drive_folder_id,
-    )
-    print(f"Loaded {len(docs)} documents.")
-
-    all_chunks = []
-    for doc in docs:
-        all_chunks.extend(chunk_document(doc))
-
-    print(f"Produced {len(all_chunks)} chunks. Embedding and upserting...")
-
-    # Embed all chunks up front — batched + retried inside embed_documents.
-    embeddings = await embed_documents([c["chunk_text"] for c in all_chunks])
-
-    # Delete-then-insert is always org-scoped; RLS on the scoped session enforces
-    # this at the DB even if the explicit filter were dropped.
-    seen_docs: set[str] = set()
-    with session_for_org(org_id) as session:
-        upserted = 0
-        for chunk, embedding in zip(all_chunks, embeddings):
-            # Clear a doc's old chunks once, on first sighting, not per chunk.
-            if chunk["doc_id"] not in seen_docs:
-                session.query(DocumentChunk).filter_by(
-                    doc_id=chunk["doc_id"], org_id=org_id
-                ).delete()
-                seen_docs.add(chunk["doc_id"])
-
-            session.add(DocumentChunk(
-                org_id=org_id,
-                doc_id=chunk["doc_id"],
-                title=chunk["title"],
-                chunk_text=chunk["chunk_text"],
-                embedding=embedding,
-                metadata_=chunk["metadata"],
-                source_type=chunk["source_type"],
-            ))
-            upserted += 1
-
+    # Open a job row so status is observable while the run is in flight.
+    with get_session() as session:
+        job = IngestJob(org_id=org_id, status="running", trigger=trigger)
+        session.add(job)
         session.commit()
+        job_id = job.id
 
+    def _finish(status: str, *, documents: int = 0, chunks: int = 0, error: str | None = None):
+        from sqlalchemy.sql import func as _func
+        with get_session() as s:
+            j = s.query(IngestJob).filter_by(id=job_id).first()
+            if j:
+                j.status = status
+                j.documents = documents
+                j.chunks = chunks
+                j.error = error
+                j.finished_at = _func.now()
+                s.commit()
+
+    try:
+        docs = load_documents(
+            notion_api_key=eff_notion_key,
+            notion_root_page_id=eff_notion_root,
+            public_doc_ids=eff_public_ids,
+            drive_folder_id=eff_drive_folder,
+        )
+        print(f"Loaded {len(docs)} documents.")
+
+        # Namespace each doc's id per org so identical provider docs (the same public
+        # Google Doc or Notion page across tenants) never collide on doc_id.
+        for doc in docs:
+            doc["doc_id"] = namespaced_doc_id(doc["source_type"], org_id, doc["doc_id"])
+
+        all_chunks = []
+        for doc in docs:
+            all_chunks.extend(chunk_document(doc))
+
+        print(f"Produced {len(all_chunks)} chunks. Embedding and upserting...")
+
+        # Embed all chunks up front — batched + retried inside embed_documents.
+        embeddings = await embed_documents([c["chunk_text"] for c in all_chunks])
+
+        # Delete-then-insert is always org-scoped; RLS on the scoped session enforces
+        # this at the DB even if the explicit filter were dropped.
+        seen_docs: set[str] = set()
+        with session_for_org(org_id) as session:
+            upserted = 0
+            for chunk, embedding in zip(all_chunks, embeddings):
+                # Clear a doc's old chunks once, on first sighting, not per chunk.
+                if chunk["doc_id"] not in seen_docs:
+                    session.query(DocumentChunk).filter_by(
+                        doc_id=chunk["doc_id"], org_id=org_id
+                    ).delete()
+                    seen_docs.add(chunk["doc_id"])
+
+                session.add(DocumentChunk(
+                    org_id=org_id,
+                    doc_id=chunk["doc_id"],
+                    title=chunk["title"],
+                    chunk_text=chunk["chunk_text"],
+                    embedding=embedding,
+                    metadata_=chunk["metadata"],
+                    source_type=chunk["source_type"],
+                ))
+                upserted += 1
+
+            session.commit()
+    except Exception as exc:
+        _finish("failed", error=str(exc))
+        raise
+
+    _finish("completed", documents=len(docs), chunks=upserted)
     print(f"Ingestion complete. {upserted} chunks stored.")
     return {"status": "ok", "documents": len(docs), "chunks": upserted}

@@ -15,6 +15,7 @@ const I = {
   users:   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5.5" r="2" stroke="currentColor" strokeWidth="1.4"/><path d="M1.5 13.5c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M11 3.5a2 2 0 010 4M14.5 13.5c0-2.21-1.57-4.06-3.5-4.43" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
   gear:    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.25" stroke="currentColor" strokeWidth="1.4"/><path d="M8 1.5v1.25M8 13.25V14.5M1.5 8h1.25M13.25 8H14.5M3.4 3.4l.88.88M11.72 11.72l.88.88M3.4 12.6l.88-.88M11.72 4.28l.88-.88" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
   credit:  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="3.5" width="13" height="9" rx="1" stroke="currentColor" strokeWidth="1.4"/><path d="M1.5 7h13" stroke="currentColor" strokeWidth="1.4"/><rect x="3.5" y="9.5" width="2.5" height="1.5" rx=".5" fill="currentColor"/></svg>,
+  chart:   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2v11a.5.5 0 00.5.5H14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M5 10.5V8M8 10.5V5M11 10.5V6.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
   chevUp:  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 8l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   signout: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M6 2H3a1 1 0 00-1 1v9a1 1 0 001 1h3M10 10.5l3-3-3-3M13 7.5H6" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"/></svg>,
 };
@@ -27,6 +28,7 @@ const MAIN_ITEMS = [
 const ADMIN_ITEMS = [
   { label: "Files",       href: "/admin/files",        icon: I.file   },
   { label: "Connections", href: "/admin/connections",  icon: I.plug   },
+  { label: "Analytics",   href: "/admin/analytics",    icon: I.chart  },
   { label: "Team",        href: "/admin/staff",        icon: I.users  },
   { label: "Settings",   href: "/admin/settings",     icon: I.gear   },
   { label: "Billing",    href: "/admin/billing",      icon: I.credit },
@@ -53,16 +55,16 @@ function OrgAvatar({ imageUrl, name }: { imageUrl?: string | null; name?: string
   );
 }
 
-function NavLink({ href, icon, label, active }: { href: string; icon: React.ReactNode; label: string; active: boolean }) {
+function NavLink({ href, icon, label, active, onClick }: { href: string; icon: React.ReactNode; label: string; active: boolean; onClick?: () => void }) {
   return (
-    <Link href={href} className="nav-link" data-active={active ? "true" : "false"}>
+    <Link href={href} className="nav-link" data-active={active ? "true" : "false"} onClick={onClick}>
       <span className="nav-icon">{icon}</span>
       {label}
     </Link>
   );
 }
 
-export default function SideNav() {
+export default function SideNav({ mobileOpen = false, onMobileClose }: { mobileOpen?: boolean; onMobileClose?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { organization, membership } = useOrganization();
@@ -88,17 +90,7 @@ export default function SideNav() {
   }
 
   return (
-    <nav style={{
-      width: 210,
-      minWidth: 210,
-      height: "100%",
-      background: "transparent",
-      borderRight: "none",
-      display: "flex",
-      flexDirection: "column",
-      flexShrink: 0,
-      overflow: "hidden",
-    }}>
+    <nav className="sidenav" data-open={mobileOpen ? "true" : "false"}>
       {/* Logo */}
       <div style={{
         padding: "56px 16px 20px 20px",
@@ -117,14 +109,14 @@ export default function SideNav() {
       {/* Nav items */}
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
         {MAIN_ITEMS.map(item => (
-          <NavLink key={item.href} href={item.href} icon={item.icon} label={item.label} active={isActive(item.href)} />
+          <NavLink key={item.href} href={item.href} icon={item.icon} label={item.label} active={isActive(item.href)} onClick={onMobileClose} />
         ))}
 
         {isAdmin && (
           <>
             <div style={{ height: 1, background: "#EBEBEB", margin: "8px 0" }} />
             {ADMIN_ITEMS.map(item => (
-              <NavLink key={item.href} href={item.href} icon={item.icon} label={item.label} active={isActive(item.href)} />
+              <NavLink key={item.href} href={item.href} icon={item.icon} label={item.label} active={isActive(item.href)} onClick={onMobileClose} />
             ))}
           </>
         )}
@@ -167,11 +159,11 @@ export default function SideNav() {
           <div style={{ padding: "4px 0" }}>
             {isAdmin && (
               <>
-                <Link href="/admin/settings" className="account-menu-item" onClick={() => setMenuOpen(false)}>
+                <Link href="/admin/settings" className="account-menu-item" onClick={() => { setMenuOpen(false); onMobileClose?.(); }}>
                   <span style={{ display: "flex", color: "#888" }}>{I.gear}</span>
                   Settings
                 </Link>
-                <Link href="/admin/billing" className="account-menu-item" onClick={() => setMenuOpen(false)}>
+                <Link href="/admin/billing" className="account-menu-item" onClick={() => { setMenuOpen(false); onMobileClose?.(); }}>
                   <span style={{ display: "flex", color: "#888" }}>{I.credit}</span>
                   Billing
                 </Link>

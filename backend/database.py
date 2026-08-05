@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -81,6 +82,90 @@ class DocumentChunk(Base):
 
     __table_args__ = (
         Index("ix_documents_org_doc", "org_id", "doc_id"),
+    )
+
+
+class IngestJob(Base):
+    """One row per ingestion run — powers /ingest/status and the dashboard feed.
+
+    Deliberately NOT under RLS: it holds no tenant document content, only run
+    metadata, and every read is explicitly filtered by org_id. Writes happen
+    from run_ingestion under the superuser session, so no athena_app grants are
+    needed. The FK cascades cleanly when an org is offboarded.
+    """
+    __tablename__ = "ingest_jobs"
+
+    id           = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id       = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status       = Column(String, nullable=False, default="running")  # running | completed | failed
+    trigger      = Column(String, default="manual")                   # manual | onboarding | webhook | cron
+    documents    = Column(Integer, default=0)
+    chunks       = Column(Integer, default=0)
+    error        = Column(Text)
+    started_at   = Column(DateTime(timezone=True), server_default=func.now())
+    finished_at  = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_ingest_jobs_org_started", "org_id", "started_at"),
+    )
+
+
+class Conversation(Base):
+    """A resumable chat thread owned by one user within one org.
+
+    Under RLS (org isolation backstop) like documents — read/write only through
+    session_for_org(). Per-user privacy (a member sees only their own threads) is
+    an app-layer filter on user_id; admin analytics reads org-wide aggregates.
+    """
+    __tablename__ = "conversations"
+
+    id          = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id      = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id     = Column(String, nullable=False)                     # clerk_user_id (owner)
+    title       = Column(String, nullable=False, default="New conversation")
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_conversations_org_user_updated", "org_id", "user_id", "updated_at"),
+    )
+
+
+class Message(Base):
+    """One turn in a conversation. Assistant turns carry source metadata in
+    `metadata_` (type/source_title/source_doc_id/source_type/staff_*/score) so a
+    reopened thread rebuilds the same source and staff cards."""
+    __tablename__ = "messages"
+
+    id               = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    conversation_id  = Column(
+        UUID,
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    org_id           = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id          = Column(String, nullable=False)               # owner of the conversation
+    role             = Column(String, nullable=False)               # "user" | "assistant"
+    content          = Column(Text, nullable=False)
+    metadata_        = Column("metadata", JSONB)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+        Index("ix_messages_org_created", "org_id", "created_at"),
     )
 
 

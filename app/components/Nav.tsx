@@ -99,7 +99,7 @@ export default function Nav() {
             How it works
           </a>
           <Link
-            href="/waitlist"
+            href="/register"
             style={{
               textDecoration: "none",
               height: 40,

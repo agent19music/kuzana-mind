@@ -141,7 +141,7 @@ No ANN index exists (contrary to CLAUDE.md). Add an HNSW index on `documents.emb
 ---
 **ATH-C1 · Per-org Drive folder ingestion (service account)** — P0 · M · deps: ATH-A4 · unblocks client call
 
-Wire the existing `load_from_google_drive` (`ingest.py:88-126`) for multitenancy per `google-workspace-spec.md` Path A:
+Wire the existing `load_from_google_drive` (`ingest.py:88-126`) for multitenancy per `../specs/google-workspace-spec.md` Path A:
 
 - `Organization.drive_folder_id` column (Alembic) + store in `run_ingestion`.
 - `IngestRequest.drive_folder_id` field (`main.py`); `load_documents` uses per-request/per-org folder, falling back to env only for local dev.
@@ -217,7 +217,7 @@ On `organization.deleted`, cascade-delete the org's chunks, config, and staff (F
 ---
 **ATH-E4 · Per-org staff directory (retire the global JSON)** — P2 · M · no deps
 
-`retrieval.py:66-82` serves the same static `staff_directory.json` to every tenant. Move staff into a per-org table (seed from JSON for existing), scope the fallback query to `org_id`, and expose an admin staff-management surface (spec exists in `auth-and-orgs-spec.md`).
+`retrieval.py:66-82` serves the same static `staff_directory.json` to every tenant. Move staff into a per-org table (seed from JSON for existing), scope the fallback query to `org_id`, and expose an admin staff-management surface (spec exists in `../specs/auth-and-orgs-spec.md`).
 
 **Acceptance:** each org's fallback returns only its own staff; no shared file.
 
