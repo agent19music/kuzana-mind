@@ -1,6 +1,11 @@
 # Restoring Clerk Auth
 
-This doc covers how to undo the Clerk nuke from the `staging` branch (commit `8eca97d` and forward). The removal was intentional for the waitlist-only marketing phase.
+> ✅ **Restored on `staging` (2026-07-19).** Clerk auth is wired back in. The correct
+> pre-nuke commit was **`de3fcbc`** (parent of `0b2d495 "nuke clerk"`), not `8eca97d`.
+> Files were restored from `de3fcbc`; `app/layout.tsx` was hand-merged to keep the
+> post-nuke Analytics/GoogleAnalytics additions. The notes below are kept for history.
+
+This doc covers how to undo the Clerk nuke from the `staging` branch. The removal was intentional for the waitlist-only marketing phase.
 
 ---
 

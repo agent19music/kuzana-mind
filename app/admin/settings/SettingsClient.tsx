@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import FileUploadCard from "./FileUploadCard";
 
@@ -257,65 +258,6 @@ function InlineNameEdit({ initialName }: { initialName: string }) {
   );
 }
 
-function SyncButton() {
-  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [detail, setDetail] = useState("");
-
-  async function trigger() {
-    setState("loading");
-    try {
-      const res = await fetch("/api/admin/sync", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setDetail(data.error ?? "Unknown error");
-        setState("error");
-      } else {
-        setDetail(`${data.chunks ?? data.documents ?? "—"} chunks indexed`);
-        setState("done");
-      }
-    } catch {
-      setDetail("Could not reach server");
-      setState("error");
-    }
-  }
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-      <button
-        onClick={trigger}
-        disabled={state === "loading"}
-        className="btn-pill"
-        style={{
-          fontSize: 14,
-          color: state === "loading" ? "#a3a3a3" : "#1a1a1a",
-          background: "#fff",
-          border: "1px solid #e5e5e5",
-          borderRadius: 9999,
-          padding: "7px 18px",
-          cursor: state === "loading" ? "not-allowed" : "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)",
-        }}
-      >
-        {state === "loading" ? (
-          <>
-            <span className="spinner" style={{ borderTopColor: "#a3a3a3" }} />
-            Syncing…
-          </>
-        ) : (
-          <>Re-sync now {state === "idle" && arrowIcon}</>
-        )}
-      </button>
-      {detail && (
-        <span style={{ fontSize: 13, color: state === "error" ? "#e05a5a" : "#6b6b6b" }}>
-          {detail}
-        </span>
-      )}
-    </div>
-  );
-}
 
 export default function SettingsClient({
   orgName,
@@ -341,19 +283,19 @@ export default function SettingsClient({
         </div>
       </section>
 
-      {/* Integrations */}
+      {/* Connections */}
       <section style={{ marginBottom: 64 }}>
         <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "-0.01em" }}>
-          Integrations
+          Connections
         </h2>
         <div style={{ borderTop: "1px solid #e5e5e5", marginTop: 16 }}>
-          <Row label="Notion">
+          <Row label="Data sources">
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <p style={{ fontSize: 15, color: "#6b6b6b", margin: 0, lineHeight: 1.55 }}>
-                Connect your Notion workspace to keep your knowledge base in sync.
+                Manage your Notion, Google Docs, and Drive integrations — and trigger a manual sync.
               </p>
-              <a
-                href="/api/auth/notion"
+              <Link
+                href="/admin/connections"
                 className="btn-pill"
                 style={{
                   alignSelf: "flex-start",
@@ -368,30 +310,8 @@ export default function SettingsClient({
                   gap: 6,
                 }}
               >
-                Connect Notion {arrowIcon}
-              </a>
-            </div>
-          </Row>
-          <Row label="Google Docs">
-            <p style={{ fontSize: 15, color: "#a3a3a3", margin: 0 }}>
-              Managed during onboarding. Full connector coming soon.
-            </p>
-          </Row>
-        </div>
-      </section>
-
-      {/* Sync */}
-      <section style={{ marginBottom: 64 }}>
-        <h2 style={{ fontSize: 13, color: "#a3a3a3", margin: "0 0 1px 0", letterSpacing: "-0.01em" }}>
-          Knowledge sync
-        </h2>
-        <div style={{ borderTop: "1px solid #e5e5e5", marginTop: 16 }}>
-          <Row label="Manual sync">
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ fontSize: 15, color: "#6b6b6b", margin: 0, lineHeight: 1.55 }}>
-                Re-indexes all connected sources for this organisation.
-              </p>
-              <SyncButton />
+                Manage connections {arrowIcon}
+              </Link>
             </div>
           </Row>
         </div>

@@ -1,15 +1,13 @@
-import asyncio
 import json
 import os
 import re
 from pathlib import Path
 
 import httpx
-from google import genai
-from google.genai import types
-from langchain_text_splitters import MarkdownHeaderTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
-from database import DocumentChunk, get_session
+from database import DocumentChunk, get_session, session_for_org
+from embeddings import embed_documents
 
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 SAMPLE_DOCS_PATH = Path(__file__).parent / "sample_docs"
@@ -24,7 +22,20 @@ def _parse_doc_id(id_or_url: str) -> str:
     match = re.search(r"/document/d/([a-zA-Z0-9_-]+)", id_or_url)
     return match.group(1) if match else id_or_url.strip()
 
-_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+def namespaced_doc_id(source_type: str, org_id: str, provider_id: str) -> str:
+    """Namespace a source's native document id per org: {source}:{org}:{id}.
+
+    Two tenants ingesting the same public Google Doc or Notion page share the
+    provider's id. The `org_id` column + RLS isolate the rows themselves, but
+    the delete-then-insert upsert keys on `doc_id`, so an un-namespaced id lets
+    a re-ingest in one org delete another org's chunks for the same provider id
+    (and makes doc_id ambiguous across tenants). Namespacing keeps each tenant's
+    document set distinct while remaining deterministic, so re-ingest still
+    replaces exactly that org's chunks.
+    """
+    return f"{source_type}:{org_id}:{provider_id}"
+
 
 HEADERS_TO_SPLIT_ON = [
     ("#", "h1"),
@@ -32,9 +43,23 @@ HEADERS_TO_SPLIT_ON = [
     ("###", "h3"),
 ]
 
-splitter = MarkdownHeaderTextSplitter(
+# Header split gives us document structure; the recursive splitter then bounds
+# each section so a header-less export (typical of Google Docs / Drive plain-text)
+# never becomes one giant chunk that blows the embedding input limit.
+# Sizes are in characters — ~4 chars/token, so ~3000 chars ≈ ~750 tokens, well
+# under the embedding model's input cap, with overlap to preserve context across cuts.
+CHUNK_SIZE_CHARS = int(os.getenv("CHUNK_SIZE_CHARS", "3000"))
+CHUNK_OVERLAP_CHARS = int(os.getenv("CHUNK_OVERLAP_CHARS", "400"))
+
+header_splitter = MarkdownHeaderTextSplitter(
     headers_to_split_on=HEADERS_TO_SPLIT_ON,
     strip_headers=False,
+)
+
+recursive_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=CHUNK_SIZE_CHARS,
+    chunk_overlap=CHUNK_OVERLAP_CHARS,
+    separators=["\n\n", "\n", ". ", " ", ""],
 )
 
 
@@ -277,6 +302,7 @@ def load_documents(
     notion_api_key: str | None = None,
     notion_root_page_id: str | None = None,
     public_doc_ids: list[str] | None = None,
+    drive_folder_id: str | None = None,
 ) -> list[dict]:
     """Load documents from all configured sources (additive, not exclusive).
 
@@ -297,12 +323,14 @@ def load_documents(
         print(f"NOTION_API_KEY set — fetching from Notion root page {effective_notion_root}")
         docs += load_from_notion(effective_notion_key, effective_notion_root)
 
-    # Source 3: Google Drive (service account)
-    folder_id = os.getenv("DRIVE_FOLDER_ID")
+    # Source 3: Google Drive (service account). Per-org folder takes precedence
+    # over the deployment-wide DRIVE_FOLDER_ID; the service-account JSON is always
+    # a deployment secret shared across tenants (each org shares its folder with it).
+    effective_folder = drive_folder_id or os.getenv("DRIVE_FOLDER_ID")
     service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if folder_id and service_account_json:
-        print(f"Loading from Google Drive folder {folder_id}")
-        docs += load_from_google_drive(folder_id, service_account_json)
+    if effective_folder and service_account_json:
+        print(f"Loading from Google Drive folder {effective_folder}")
+        docs += load_from_google_drive(effective_folder, service_account_json)
 
     # Source 4: Local mock files (fallback or augmentation)
     if USE_MOCK:
@@ -323,35 +351,50 @@ def load_documents(
 # Chunking
 # ---------------------------------------------------------------------------
 
+def _header_breadcrumb(metadata: dict) -> str:
+    """Join whatever header levels a section carries into 'H1 › H2 › H3'."""
+    parts = [metadata.get(level) for level in ("h1", "h2", "h3")]
+    return " › ".join(p for p in parts if p)
+
+
 def chunk_document(doc: dict) -> list[dict]:
-    chunks = splitter.split_text(doc["content"])
-    return [
-        {
-            "doc_id": doc["doc_id"],
-            "title": doc["title"],
-            "chunk_text": chunk.page_content,
-            "metadata": chunk.metadata,
-            "source_type": doc.get("source_type", "mock"),
-        }
-        for chunk in chunks
-    ]
+    """
+    Two-pass chunking: split on markdown headers for structure, then bound each
+    section with the recursive splitter so no chunk exceeds the size cap. Each
+    resulting chunk carries its header breadcrumb (for citations) and is prefixed
+    with that breadcrumb so an isolated chunk still reads with context.
+    """
+    sections = header_splitter.split_text(doc["content"])
 
+    out: list[dict] = []
+    for section in sections:
+        breadcrumb = _header_breadcrumb(section.metadata)
+        pieces = recursive_splitter.split_text(section.page_content)
 
-# ---------------------------------------------------------------------------
-# Embedding
-# ---------------------------------------------------------------------------
+        for i, piece in enumerate(pieces):
+            text = piece.strip()
+            if not text:
+                continue
+            # Prefix the breadcrumb only when the piece doesn't already start
+            # with the header text (first piece of a strip_headers=False section).
+            if breadcrumb and not text.startswith(breadcrumb.split(" › ")[-1]):
+                chunk_text = f"{breadcrumb}\n\n{text}"
+            else:
+                chunk_text = text
 
-def _embed_sync(text_input: str) -> list[float]:
-    response = _client.models.embed_content(
-        model="gemini-embedding-2",
-        contents=text_input,
-        config=types.EmbedContentConfig(output_dimensionality=768),
-    )
-    return response.embeddings[0].values
+            metadata = dict(section.metadata)
+            metadata["breadcrumb"] = breadcrumb
+            metadata["section_part"] = i
 
+            out.append({
+                "doc_id": doc["doc_id"],
+                "title": doc["title"],
+                "chunk_text": chunk_text,
+                "metadata": metadata,
+                "source_type": doc.get("source_type", "mock"),
+            })
 
-async def embed_text(text_input: str) -> list[float]:
-    return await asyncio.to_thread(_embed_sync, text_input)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -365,72 +408,123 @@ async def run_ingestion(
     notion_api_key: str | None = None,
     notion_root_page_id: str | None = None,
     public_doc_ids: list[str] | None = None,
+    drive_folder_id: str | None = None,
+    trigger: str = "manual",
 ) -> dict:
-    # Upsert org record if org_id provided
-    if org_id:
-        from database import Organization
-        with get_session() as session:
-            org = session.query(Organization).filter_by(clerk_org_id=org_id).first()
-            if org:
-                if org_name:
-                    org.name = org_name
-                if org_logo_url:
-                    org.logo_url = org_logo_url
-                if notion_api_key:
-                    org.notion_api_key = notion_api_key
-                if notion_root_page_id:
-                    org.notion_root_page_id = notion_root_page_id
-                if public_doc_ids is not None:
-                    org.public_doc_ids = public_doc_ids
-            else:
-                org = Organization(
-                    clerk_org_id=org_id,
-                    name=org_name or "Unnamed Organisation",
-                    logo_url=org_logo_url,
-                    notion_api_key=notion_api_key,
-                    notion_root_page_id=notion_root_page_id,
-                    public_doc_ids=public_doc_ids or [],
-                )
-                session.add(org)
-            session.commit()
+    # org_id is mandatory: chunks are tenant data and must never be written
+    # unscoped. A missing org would otherwise create null-org rows visible to all.
+    if not org_id:
+        raise ValueError("run_ingestion requires an org_id")
 
-    docs = load_documents(
-        notion_api_key=notion_api_key,
-        notion_root_page_id=notion_root_page_id,
-        public_doc_ids=public_doc_ids,
-    )
-    print(f"Loaded {len(docs)} documents.")
-
-    all_chunks = []
-    for doc in docs:
-        all_chunks.extend(chunk_document(doc))
-
-    print(f"Produced {len(all_chunks)} chunks. Embedding and upserting...")
-
+    # Upsert org record (also the FK target that document chunks reference), and
+    # capture the org's *stored* config to fall back on. A re-sync (e.g. the admin
+    # "Sync now" button) sends only org_id — without this fallback it would ignore
+    # the org's saved Notion key / doc ids / Drive folder and index nothing.
+    from database import IngestJob, Organization
     with get_session() as session:
-        upserted = 0
-        for chunk in all_chunks:
-            embedding = await embed_text(chunk["chunk_text"])
-
-            # Scope deletion to this org if provided, else delete all matching doc_id rows
-            q = session.query(DocumentChunk).filter_by(doc_id=chunk["doc_id"])
-            if org_id:
-                q = q.filter_by(org_id=org_id)
-            q.delete()
-
-            record = DocumentChunk(
-                org_id=org_id,
-                doc_id=chunk["doc_id"],
-                title=chunk["title"],
-                chunk_text=chunk["chunk_text"],
-                embedding=embedding,
-                metadata_=chunk["metadata"],
-                source_type=chunk["source_type"],
+        org = session.query(Organization).filter_by(clerk_org_id=org_id).first()
+        if org:
+            if org_name:
+                org.name = org_name
+            if org_logo_url:
+                org.logo_url = org_logo_url
+            if notion_api_key:
+                org.notion_api_key = notion_api_key
+            if notion_root_page_id:
+                org.notion_root_page_id = notion_root_page_id
+            if public_doc_ids is not None:
+                org.public_doc_ids = public_doc_ids
+            if drive_folder_id is not None:
+                org.drive_folder_id = drive_folder_id
+        else:
+            org = Organization(
+                clerk_org_id=org_id,
+                name=org_name or "Unnamed Organisation",
+                logo_url=org_logo_url,
+                notion_api_key=notion_api_key,
+                notion_root_page_id=notion_root_page_id,
+                public_doc_ids=public_doc_ids or [],
+                drive_folder_id=drive_folder_id,
             )
-            session.add(record)
-            upserted += 1
-
+            session.add(org)
         session.commit()
+        # Effective config: explicit per-request value wins, else the stored one.
+        eff_notion_key = notion_api_key or org.notion_api_key
+        eff_notion_root = notion_root_page_id or org.notion_root_page_id
+        eff_public_ids = public_doc_ids if public_doc_ids is not None else org.public_doc_ids
+        eff_drive_folder = drive_folder_id or org.drive_folder_id
 
+    # Open a job row so status is observable while the run is in flight.
+    with get_session() as session:
+        job = IngestJob(org_id=org_id, status="running", trigger=trigger)
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+    def _finish(status: str, *, documents: int = 0, chunks: int = 0, error: str | None = None):
+        from sqlalchemy.sql import func as _func
+        with get_session() as s:
+            j = s.query(IngestJob).filter_by(id=job_id).first()
+            if j:
+                j.status = status
+                j.documents = documents
+                j.chunks = chunks
+                j.error = error
+                j.finished_at = _func.now()
+                s.commit()
+
+    try:
+        docs = load_documents(
+            notion_api_key=eff_notion_key,
+            notion_root_page_id=eff_notion_root,
+            public_doc_ids=eff_public_ids,
+            drive_folder_id=eff_drive_folder,
+        )
+        print(f"Loaded {len(docs)} documents.")
+
+        # Namespace each doc's id per org so identical provider docs (the same public
+        # Google Doc or Notion page across tenants) never collide on doc_id.
+        for doc in docs:
+            doc["doc_id"] = namespaced_doc_id(doc["source_type"], org_id, doc["doc_id"])
+
+        all_chunks = []
+        for doc in docs:
+            all_chunks.extend(chunk_document(doc))
+
+        print(f"Produced {len(all_chunks)} chunks. Embedding and upserting...")
+
+        # Embed all chunks up front — batched + retried inside embed_documents.
+        embeddings = await embed_documents([c["chunk_text"] for c in all_chunks])
+
+        # Delete-then-insert is always org-scoped; RLS on the scoped session enforces
+        # this at the DB even if the explicit filter were dropped.
+        seen_docs: set[str] = set()
+        with session_for_org(org_id) as session:
+            upserted = 0
+            for chunk, embedding in zip(all_chunks, embeddings):
+                # Clear a doc's old chunks once, on first sighting, not per chunk.
+                if chunk["doc_id"] not in seen_docs:
+                    session.query(DocumentChunk).filter_by(
+                        doc_id=chunk["doc_id"], org_id=org_id
+                    ).delete()
+                    seen_docs.add(chunk["doc_id"])
+
+                session.add(DocumentChunk(
+                    org_id=org_id,
+                    doc_id=chunk["doc_id"],
+                    title=chunk["title"],
+                    chunk_text=chunk["chunk_text"],
+                    embedding=embedding,
+                    metadata_=chunk["metadata"],
+                    source_type=chunk["source_type"],
+                ))
+                upserted += 1
+
+            session.commit()
+    except Exception as exc:
+        _finish("failed", error=str(exc))
+        raise
+
+    _finish("completed", documents=len(docs), chunks=upserted)
     print(f"Ingestion complete. {upserted} chunks stored.")
     return {"status": "ok", "documents": len(docs), "chunks": upserted}

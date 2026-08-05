@@ -266,7 +266,7 @@ export default function PricingSection() {
 
               {/* CTA — always at the bottom */}
               <Link
-                href="/waitlist"
+                href="/register"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -290,7 +290,7 @@ export default function PricingSection() {
                       }),
                 }}
               >
-                Join waitlist
+                Get started
               </Link>
             </motion.div>
           ))}
