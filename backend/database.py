@@ -1,12 +1,30 @@
 import os
+from contextlib import contextmanager
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, Column, DateTime, String, Text, UniqueConstraint, create_engine, text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.sql import func
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://athena:athena@db:5432/athena_brain")
+
+# Non-superuser role that RLS policies are enforced against. The app connects
+# as the DB owner/superuser (which bypasses RLS), so org-scoped sessions
+# SET LOCAL ROLE to this role inside their transaction — see session_for_org().
+APP_ROLE = os.getenv("APP_DB_ROLE", "athena_app")
 
 engine = create_engine(DATABASE_URL)
 
@@ -25,6 +43,7 @@ class Organization(Base):
     notion_api_key       = Column(String)
     notion_root_page_id  = Column(String)
     public_doc_ids       = Column(JSONB, default=list)
+    drive_folder_id      = Column(String)                # per-org service-account Drive folder
     avax_audit_enabled   = Column(Boolean, default=False)
     created_at     = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -47,14 +66,107 @@ class DocumentChunk(Base):
     __tablename__ = "documents"
 
     id          = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
-    org_id      = Column(String, nullable=True, index=True)  # clerk_org_id — null for legacy rows
+    org_id      = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )                                                         # clerk_org_id — tenant owner
     doc_id      = Column(String, nullable=False, index=True)  # Google Doc ID, Notion page ID, or filename
     title       = Column(String)
     chunk_text  = Column(Text, nullable=False)
     embedding   = Column(Vector(768))                         # gemini-embedding-2 @ 768 dims
     metadata_   = Column("metadata", JSONB)
-    source_type = Column(String, default="mock")              # "google_docs" | "notion" | "mock"
+    source_type = Column(String, default="mock")              # "google_docs" | "notion" | "upload" | "mock"
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_documents_org_doc", "org_id", "doc_id"),
+    )
+
+
+class IngestJob(Base):
+    """One row per ingestion run — powers /ingest/status and the dashboard feed.
+
+    Deliberately NOT under RLS: it holds no tenant document content, only run
+    metadata, and every read is explicitly filtered by org_id. Writes happen
+    from run_ingestion under the superuser session, so no athena_app grants are
+    needed. The FK cascades cleanly when an org is offboarded.
+    """
+    __tablename__ = "ingest_jobs"
+
+    id           = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id       = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status       = Column(String, nullable=False, default="running")  # running | completed | failed
+    trigger      = Column(String, default="manual")                   # manual | onboarding | webhook | cron
+    documents    = Column(Integer, default=0)
+    chunks       = Column(Integer, default=0)
+    error        = Column(Text)
+    started_at   = Column(DateTime(timezone=True), server_default=func.now())
+    finished_at  = Column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_ingest_jobs_org_started", "org_id", "started_at"),
+    )
+
+
+class Conversation(Base):
+    """A resumable chat thread owned by one user within one org.
+
+    Under RLS (org isolation backstop) like documents — read/write only through
+    session_for_org(). Per-user privacy (a member sees only their own threads) is
+    an app-layer filter on user_id; admin analytics reads org-wide aggregates.
+    """
+    __tablename__ = "conversations"
+
+    id          = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id      = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id     = Column(String, nullable=False)                     # clerk_user_id (owner)
+    title       = Column(String, nullable=False, default="New conversation")
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_conversations_org_user_updated", "org_id", "user_id", "updated_at"),
+    )
+
+
+class Message(Base):
+    """One turn in a conversation. Assistant turns carry source metadata in
+    `metadata_` (type/source_title/source_doc_id/source_type/staff_*/score) so a
+    reopened thread rebuilds the same source and staff cards."""
+    __tablename__ = "messages"
+
+    id               = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    conversation_id  = Column(
+        UUID,
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    org_id           = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id          = Column(String, nullable=False)               # owner of the conversation
+    role             = Column(String, nullable=False)               # "user" | "assistant"
+    content          = Column(Text, nullable=False)
+    metadata_        = Column("metadata", JSONB)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_messages_conversation_created", "conversation_id", "created_at"),
+        Index("ix_messages_org_created", "org_id", "created_at"),
+    )
 
 
 class Waitlist(Base):
@@ -78,3 +190,31 @@ def init_db():
 
 def get_session() -> Session:
     return Session(engine)
+
+
+@contextmanager
+def session_for_org(org_id: str):
+    """
+    An org-scoped session for every query that touches tenant data (documents).
+
+    Inside a single transaction it (1) switches to the non-superuser APP_ROLE so
+    row-level security is actually enforced, and (2) publishes the org id as the
+    `athena.org_id` GUC that the RLS policy reads. If application code ever forgets
+    a WHERE org_id filter, the database still returns/writes only this org's rows.
+
+    org_id must be a non-empty string — callers upstream (require_auth) guarantee it.
+    """
+    if not org_id:
+        raise ValueError("session_for_org requires a non-empty org_id")
+
+    session = Session(engine)
+    try:
+        # SET LOCAL is scoped to the current transaction; both statements begin it.
+        session.execute(text(f'SET LOCAL ROLE "{APP_ROLE}"'))
+        session.execute(
+            text("SELECT set_config('athena.org_id', :org_id, true)"),
+            {"org_id": org_id},
+        )
+        yield session
+    finally:
+        session.close()
