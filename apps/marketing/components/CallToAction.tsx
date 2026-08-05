@@ -49,7 +49,7 @@ export default function CallToAction() {
         </p>
 
         <Link
-          href="/register"
+          href="/waitlist"
           style={{
             textDecoration: "none",
             display: "inline-flex",

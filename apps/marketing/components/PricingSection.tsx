@@ -266,7 +266,7 @@ export default function PricingSection() {
 
               {/* CTA — always at the bottom */}
               <Link
-                href="/register"
+                href="/waitlist"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
