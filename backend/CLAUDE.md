@@ -23,10 +23,9 @@ FastAPI + pgvector service. Handles auth verification, ingestion, embedding, and
 backend/
 ├── main.py              # FastAPI app, CORS, lifespan (init_db on startup), endpoints
 ├── auth.py              # Clerk JWT verification + require_backend_secret FastAPI dep
-├── retrieval.py         # Embedding query → pgvector search → staff fallback
+├── retrieval.py         # Embedding query → pgvector search → honest no-match fallback
 ├── ingest.py            # Document loading (Notion / public docs / mock) → chunk → embed → upsert
 ├── database.py          # SQLAlchemy models: DocumentChunk, Organization, OrganizationMember, IngestJob
-├── staff_directory.json # Static staff fallback — never hallucinate, always route here
 └── sample_docs/         # Local markdown files used when USE_MOCK=true
 ```
 
@@ -114,10 +113,13 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
 `retrieval.py::answer_query(query, org_id)`:
 1. Embed the query with `RETRIEVAL_QUERY` task type (`embeddings.embed_query`)
 2. Cosine similarity search via pgvector (HNSW index), org-scoped via `session_for_org`
-3. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.75`) → return matching chunk
-4. Else → `staff_fallback()` topic-matches against `staff_directory.json`
-
-The answer is the raw chunk text, not LLM-synthesised. Fast and traceable.
+3. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.75`) → synthesise an answer from the chunk
+4. Else → honest "no documentation on this" response. There used to be a
+   `staff_fallback()` step here matching against a single global
+   `staff_directory.json` of fictional demo employees — it was never
+   org-scoped, so every tenant saw the same fake names as if they were real
+   contacts. Removed. If a real per-org staff directory gets built, it needs
+   its own `organizations`-scoped table, not a shared static file.
 
 ---
 
@@ -169,7 +171,6 @@ Or start both together: `docker-compose up`
 
 ## Extending
 
-- **Add a new staff member:** Edit `staff_directory.json` — no code change needed
 - **Swap embedding model:** Change the model string in `ingest.py::_embed_sync` and `retrieval.py::_embed_sync`. Update `database.py` vector dimension if needed
 - **Add LLM synthesis:** In `retrieval.py::answer_query`, after finding the best chunk, pass `chunk_text + query` to Gemini's generate API before returning
 - **Wire real Drive:** Set `USE_MOCK=false` + `DRIVE_FOLDER_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON`

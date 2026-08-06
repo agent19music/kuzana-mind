@@ -1,6 +1,4 @@
-import json
 import os
-from pathlib import Path
 
 from sqlalchemy import text
 
@@ -9,7 +7,6 @@ from embeddings import embed_query
 from generation import condense_question, synthesize_answer
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
-STAFF_DIRECTORY_PATH = Path(__file__).parent / "staff_directory.json"
 
 
 def _provider_doc_id(doc_id: str) -> str:
@@ -50,25 +47,6 @@ async def similarity_search(
     return [dict(row) for row in rows]
 
 
-def staff_fallback(query: str) -> dict | None:
-    with open(STAFF_DIRECTORY_PATH) as f:
-        staff = json.load(f)
-
-    query_lower = query.lower()
-    scored = []
-
-    for member in staff:
-        topic_hits = sum(1 for topic in member["topics"] if topic in query_lower)
-        if topic_hits > 0:
-            scored.append((topic_hits, member))
-
-    if not scored:
-        return staff[0] if staff else None
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return scored[0][1]
-
-
 async def answer_query(
     query: str, org_id: str, history: list[dict] | None = None
 ) -> dict:
@@ -80,9 +58,6 @@ async def answer_query(
     query_embedding = await embed_query(search_query)
     results = await similarity_search(query_embedding, org_id=org_id)
 
-    # ----------------------------------------------------------------
-    # Core branch: document hit vs. staff fallback
-    # ----------------------------------------------------------------
     if results and results[0]["similarity_score"] >= SIMILARITY_THRESHOLD:
         best = results[0]
         # Synthesise a plain-language answer from the chunk instead of returning
@@ -97,27 +72,11 @@ async def answer_query(
             "similarity_score": round(best["similarity_score"], 4),
         }
 
-    # Low confidence — never hallucinate, route to staff directory
-    staff = staff_fallback(query)
-
-    if staff:
-        title_line = f" ({staff['title']}, {staff['department']})" if "title" in staff else ""
-        return {
-            "answer": (
-                f"I don't have exact documentation on this, but {staff['name']}{title_line} "
-                f"handles {staff['domain']}. You should ask them because {staff['reason']}"
-            ),
-            "type": "staff_fallback",
-            "staff_name": staff["name"],
-            "staff_email": staff["email"],
-            "staff_domain": staff["domain"],
-            "staff_title": staff.get("title"),
-            "staff_department": staff.get("department"),
-            "similarity_score": results[0]["similarity_score"] if results else None,
-        }
-
+    # Low confidence — never hallucinate a document answer, and never invent a
+    # contact either. There is no per-org staff directory yet, so the only
+    # honest answer here is "no match" — see docs/planning/DEV-PATH.md.
     return {
-        "answer": "I don't have documentation on this topic and couldn't identify a relevant team member. Please reach out to your manager.",
+        "answer": "I don't have documentation on this topic. Try rephrasing, or check with your team directly.",
         "type": "staff_fallback",
         "similarity_score": results[0]["similarity_score"] if results else None,
     }
