@@ -13,6 +13,14 @@ org_id/source_type there. Every migration downstream (starting with
 This is a no-op on any database where 19cab987d520 actually created the
 table fresh (org_id/source_type already present) — it only backfills
 databases that hit the legacy-table guard.
+
+downgrade() is intentionally a no-op. This migration only ever backfills,
+never removes — because whether org_id/source_type "belong" to this
+migration or to 19cab987d520 depends on which path upgrade() took, and
+that's not recoverable from state alone at downgrade time. Undoing it
+unconditionally previously double-dropped `ix_documents_org_id`: on a full
+downgrade to base, 19cab987d520.downgrade() already drops that same index
+(then the whole table) — so nothing here needs to.
 """
 from typing import Sequence, Union
 
@@ -38,11 +46,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    cols = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("documents")}
-
-    if "source_type" in cols:
-        op.drop_column("documents", "source_type")
-
-    if "org_id" in cols:
-        op.drop_index(op.f("ix_documents_org_id"), table_name="documents")
-        op.drop_column("documents", "org_id")
+    # See module docstring — deliberately a no-op.
+    pass
