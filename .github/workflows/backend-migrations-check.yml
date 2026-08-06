@@ -1,0 +1,59 @@
+name: Backend Migration Check
+
+# Migrations were previously only ever exercised against the real production
+# database, during deploy — the only feedback loop was a Cloud Run job that
+# silently failed for a month. This runs the full Alembic chain against a
+# throwaway database on every PR that touches it, so a broken migration is
+# caught before merge instead of at deploy time.
+
+on:
+  pull_request:
+    paths:
+      - "backend/alembic/**"
+      - "backend/database.py"
+      - "backend/requirements.txt"
+      - ".github/workflows/backend-migrations-check.yml"
+
+jobs:
+  check-migrations:
+    name: Verify Alembic chain applies cleanly
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: kuzana_brain
+          POSTGRES_USER: kuzana
+          POSTGRES_PASSWORD: kuzana
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kuzana -d kuzana_brain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: alembic upgrade head (fresh database)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://kuzana:kuzana@localhost:5432/kuzana_brain
+        run: python -m alembic upgrade head
+
+      - name: alembic downgrade base (round-trip check)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://kuzana:kuzana@localhost:5432/kuzana_brain
+        run: python -m alembic downgrade base

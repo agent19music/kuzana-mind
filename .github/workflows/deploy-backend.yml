@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: write
 
     steps:
       - name: Checkout
@@ -48,6 +49,7 @@ jobs:
           docker push ${{ env.IMAGE }}:latest
 
       - name: Run database migrations
+        id: migrate
         run: |
           gcloud run jobs describe migration \
             --region=${{ env.REGION }} \
@@ -69,6 +71,29 @@ jobs:
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
             --wait
+
+      # A failed migration silently blocked every deploy for a month before
+      # anyone noticed. This makes that failure loud: it files (or
+      # re-comments on) a GitHub issue instead of only showing up as a red X
+      # on a run nobody was watching. The service is NOT updated when this
+      # fires — it's still on whatever revision last deployed successfully.
+      - name: Alert on migration failure
+        if: failure() && steps.migrate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="Backend deploy failed at the migration step"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BODY="Commit \`${{ github.sha }}\` failed \`alembic upgrade head\` during deploy — the live Cloud Run service was **not** updated and is still running the last successfully deployed revision.
+
+          Run: $RUN_URL"
+
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" --search "$TITLE in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "${{ github.repository }}" --body "$BODY"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
+          fi
 
       - name: Deploy to Cloud Run
         run: |

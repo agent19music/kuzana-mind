@@ -103,6 +103,39 @@ async def stats(auth_ctx: AuthContext = Depends(require_read_auth)):
     }
 
 
+@app.get("/documents")
+async def list_documents(auth_ctx: AuthContext = Depends(require_read_auth)):
+    """One row per ingested document (grouped by doc_id) — powers the files page."""
+    org_id = auth_ctx.clerk_org_id
+    with session_for_org(org_id) as db:
+        rows = (
+            db.query(
+                DocumentChunk.doc_id,
+                DocumentChunk.title,
+                DocumentChunk.source_type,
+                func.count(DocumentChunk.id).label("chunks"),
+                func.max(DocumentChunk.created_at).label("last_indexed"),
+            )
+            .filter(DocumentChunk.org_id == org_id)
+            .group_by(DocumentChunk.doc_id, DocumentChunk.title, DocumentChunk.source_type)
+            .order_by(func.max(DocumentChunk.created_at).desc())
+            .all()
+        )
+
+    return {
+        "documents": [
+            {
+                "doc_id": r.doc_id,
+                "title": r.title,
+                "source_type": r.source_type,
+                "chunks": r.chunks,
+                "last_indexed": r.last_indexed.isoformat() if r.last_indexed else None,
+            }
+            for r in rows
+        ]
+    }
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,

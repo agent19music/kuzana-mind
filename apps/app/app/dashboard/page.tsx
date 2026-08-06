@@ -2,7 +2,6 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DashboardShell from "../../components/DashboardShell";
-import GradientBanner from "../../components/GradientBanner";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 const BACKEND_API_SECRET = process.env.BACKEND_API_SECRET ?? "";
@@ -100,13 +99,11 @@ export default async function DashboardPage() {
       <style>{`
         .dashboard-wrap { padding: 56px 48px 80px; }
         .stat-grid { grid-template-columns: repeat(4, 1fr); }
-        .stat-card-featured { min-height: 320px; }
         .dashboard-lower { grid-template-columns: 1fr 320px; gap: 32px; }
 
         @media (max-width: 768px) {
           .dashboard-wrap { padding: 24px 16px 64px; }
           .stat-grid { grid-template-columns: repeat(2, 1fr); }
-          .stat-card-featured { min-height: auto; }
           .dashboard-lower { grid-template-columns: 1fr; gap: 24px; }
         }
       `}</style>
@@ -142,25 +139,21 @@ export default async function DashboardPage() {
             ].map((s, i) => (
               <div
                 key={s.label}
-                className={i === 1 ? "stat-card-featured" : undefined}
                 style={{
-                  position: "relative",
-                  background: i === 1 ? "#b8e4ff" : "#fff",
+                  background: "#fff",
                   padding: "20px 22px",
                   display: "flex",
                   flexDirection: "column",
                   gap: 4,
-                  overflow: "hidden",
                 }}
               >
-                {i === 1 && <GradientBanner />}
-                <p style={{ position: "relative", fontSize: 12, fontWeight: 400, color: "#aaa", margin: 0, letterSpacing: "-0.01em" }}>
+                <p style={{ fontSize: 12, fontWeight: 400, color: "#aaa", margin: 0, letterSpacing: "-0.01em" }}>
                   {s.label}
                 </p>
-                <p style={{ position: "relative", fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: 0, lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>
+                <p style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: 0, lineHeight: 1.15, fontVariantNumeric: "tabular-nums" }}>
                   {s.value}
                 </p>
-                <p style={{ position: "relative", fontSize: 12, color: "#bbb", margin: 0, lineHeight: 1.4 }}>{s.sub}</p>
+                <p style={{ fontSize: 12, color: "#bbb", margin: 0, lineHeight: 1.4 }}>{s.sub}</p>
               </div>
             ))}
           </div>
