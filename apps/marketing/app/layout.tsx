@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
@@ -17,10 +18,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)} data-theme="light" style={{ colorScheme: "light" }}>
-      <body>{children}</body>
-      <Analytics />
-      <GoogleAnalytics gaId="G-NFHB1M7VJY" />
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={cn("font-sans", geist.variable)} data-theme="light" style={{ colorScheme: "light" }}>
+        <body>{children}</body>
+        <Analytics />
+        <GoogleAnalytics gaId="G-NFHB1M7VJY" />
+      </html>
+    </ClerkProvider>
   );
 }

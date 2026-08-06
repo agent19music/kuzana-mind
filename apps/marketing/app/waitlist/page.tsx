@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useWaitlist } from "@clerk/nextjs";
 import Nav from "../../components/Nav";
 import Footer from "../../components/Footer";
 
 export default function Waitlist() {
+  const { waitlist } = useWaitlist();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
@@ -19,13 +21,18 @@ export default function Waitlist() {
     setStatus("loading");
     setMessage("");
     try {
+      // Best-effort: also register the email with Clerk's waitlist so entries show up
+      // in the Clerk dashboard. Our own backend below is the source of truth for the
+      // richer profile data (name/company/role) and drives the UI's success state.
+      waitlist?.join({ emailAddress: email }).catch(() => {});
+
       const res = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, company, role }),
       });
       const data = await res.json();
-      
+
       if (res.ok) {
         if (data.status === "duplicate") {
           setStatus("duplicate");
@@ -190,7 +197,7 @@ export default function Waitlist() {
                 background: status === "success" ? "#34A853" : "#ffffff",
                 color: status === "success" ? "#ffffff" : "#171717",
                 fontSize: 16,
-                fontWeight: 500,
+                fontWeight: 400,
                 border: "none",
                 cursor: status === "loading" || status === "success" ? "not-allowed" : "pointer",
                 transition: "all 200ms ease",
