@@ -50,7 +50,7 @@ class ChatResponse(BaseModel):
     conversation_id: str            # thread this turn belongs to
     source_title: str | None = None
     source_doc_id: str | None = None
-    source_type: str | None = None  # "google_docs" | "notion" | "mock"
+    source_type: str | None = None  # "google_docs" | "notion" | "tally" | "mock"
     staff_name: str | None = None
     staff_email: str | None = None
     staff_domain: str | None = None
@@ -343,6 +343,8 @@ class IngestRequest(BaseModel):
     notion_root_page_id: str | None = None
     public_doc_ids: list[str] | None = None
     drive_folder_id: str | None = None
+    tally_api_key: str | None = None
+    tally_form_ids: list[str] | None = None
     trigger: str = "manual"
 
 
@@ -373,6 +375,8 @@ async def ingest(
         notion_root_page_id=req.notion_root_page_id,
         public_doc_ids=req.public_doc_ids,
         drive_folder_id=req.drive_folder_id,
+        tally_api_key=req.tally_api_key,
+        tally_form_ids=req.tally_form_ids,
         trigger=req.trigger,
     )
     return {"status": "started", "org_id": req.org_id}

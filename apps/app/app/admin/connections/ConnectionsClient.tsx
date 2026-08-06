@@ -37,6 +37,13 @@ const NotionLogo = () => (
   </svg>
 );
 
+const TallyLogo = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+    <rect x="1" y="1" width="22" height="22" rx="6" fill="#000"/>
+    <path d="M6 8h12M6 12h8M6 16h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
 const STATUS_CONFIG: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
   connected: { label: "Connected", dot: "#22c55e", bg: "#f0fdf4", text: "#15803d" },
   partial: { label: "Partial", dot: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
@@ -143,6 +150,7 @@ export default function ConnectionsClient({ stats, jobs }: { stats: OrgStats | n
   const sources = new Set(stats?.source_types ?? []);
   const hasNotion = sources.has("notion");
   const hasGdocs = sources.has("google_docs");
+  const hasTally = sources.has("tally");
   const lastSynced = stats?.last_synced ?? null;
   const latestJob = jobs[0] ?? null;
 
@@ -166,6 +174,16 @@ export default function ConnectionsClient({ stats, jobs }: { stats: OrgStats | n
       actionLabel: "Manage docs",
       syncable: hasGdocs,
       logo: <Image src="/icons/google-docs.png" alt="Google Docs" width={22} height={22} />,
+    },
+    {
+      id: "tally",
+      name: "Tally",
+      description: "Pull form and survey responses so staff can ask about the feedback they've received.",
+      status: hasTally ? "connected" : "partial",
+      meta: hasTally ? `Last synced ${relativeTime(lastSynced)}` : "No forms indexed yet · Needs an API key",
+      actionLabel: "Configure",
+      syncable: hasTally,
+      logo: <TallyLogo />,
     },
     {
       id: "drive",

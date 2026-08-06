@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { orgName, logoUrl, notionApiKey, notionRootPageId, publicDocIds } = body;
+  const { orgName, logoUrl, notionApiKey, notionRootPageId, publicDocIds, tallyApiKey, tallyFormIds } = body;
 
   const client = await clerkClient();
   let orgId: string;
@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
     notion_api_key: notionApiKey?.trim() || null,
     notion_root_page_id: notionRootPageId?.trim() || null,
     public_doc_ids: Array.isArray(publicDocIds) ? publicDocIds.filter(Boolean) : [],
+    tally_api_key: tallyApiKey?.trim() || null,
+    tally_form_ids: Array.isArray(tallyFormIds) ? tallyFormIds.filter(Boolean) : [],
     trigger: "onboarding",
   };
 

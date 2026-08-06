@@ -93,6 +93,8 @@ export default function OnboardingPage() {
   const [notionApiKey, setNotionApiKey] = useState("");
   const [notionRootPageId, setNotionRootPageId] = useState("");
   const [publicDocUrls, setPublicDocUrls] = useState("");
+  const [tallyApiKey, setTallyApiKey] = useState("");
+  const [tallyFormIds, setTallyFormIds] = useState("");
 
   // Sync org name from Clerk when it loads
   useEffect(() => {
@@ -121,6 +123,11 @@ export default function OnboardingPage() {
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const tallyFormIdList = tallyFormIds
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     try {
       const res = await fetch("/api/orgs", {
         method: "POST",
@@ -131,6 +138,8 @@ export default function OnboardingPage() {
           notionApiKey: notionApiKey || null,
           notionRootPageId: notionRootPageId || null,
           publicDocIds,
+          tallyApiKey: tallyApiKey || null,
+          tallyFormIds: tallyFormIdList,
         }),
       });
 
@@ -163,7 +172,9 @@ export default function OnboardingPage() {
   const hasAnySource = !!(
     notionApiKey.trim() ||
     notionRootPageId.trim() ||
-    publicDocUrls.trim()
+    publicDocUrls.trim() ||
+    tallyApiKey.trim() ||
+    tallyFormIds.trim()
   );
 
   return (
@@ -225,7 +236,7 @@ export default function OnboardingPage() {
             }}
           >
             {hasExistingOrg
-              ? `${organization.name} is ready. Add your Notion or Google Docs to start answering questions.`
+              ? `${organization.name} is ready. Add your Notion, Google Docs, or Tally forms to start answering questions.`
               : "Connect your knowledge sources. You can update these anytime from settings."}
           </p>
 
@@ -330,6 +341,38 @@ export default function OnboardingPage() {
                   onBlur={() => setFocused(null)}
                   placeholder={"https://docs.google.com/document/d/...\nhttps://docs.google.com/document/d/..."}
                   style={textareaStyle(focused === "docs")}
+                />
+              </Field>
+
+              <Field
+                label="Tally API key"
+                optional
+                hint="Create a personal access token at tally.so/settings/api to pull form feedback."
+              >
+                <input
+                  type="password"
+                  value={tallyApiKey}
+                  onChange={(e) => setTallyApiKey(e.target.value)}
+                  onFocus={() => setFocused("tallyKey")}
+                  onBlur={() => setFocused(null)}
+                  placeholder="tly-..."
+                  style={inputStyle(focused === "tallyKey")}
+                  autoComplete="off"
+                />
+              </Field>
+
+              <Field
+                label="Tally form IDs"
+                optional
+                hint="One form ID per line — staff can then ask about feedback and responses from these forms."
+              >
+                <textarea
+                  value={tallyFormIds}
+                  onChange={(e) => setTallyFormIds(e.target.value)}
+                  onFocus={() => setFocused("tallyForms")}
+                  onBlur={() => setFocused(null)}
+                  placeholder={"wQpQ8j\nmexJoq"}
+                  style={textareaStyle(focused === "tallyForms")}
                 />
               </Field>
             </div>

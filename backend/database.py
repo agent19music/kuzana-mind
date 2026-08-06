@@ -44,6 +44,8 @@ class Organization(Base):
     notion_root_page_id  = Column(String)
     public_doc_ids       = Column(JSONB, default=list)
     drive_folder_id      = Column(String)                # per-org service-account Drive folder
+    tally_api_key        = Column(String)                # personal access token, tally.so/help/api
+    tally_form_ids       = Column(JSONB, default=list)   # forms to pull submissions from
     avax_audit_enabled   = Column(Boolean, default=False)
     created_at     = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -77,7 +79,7 @@ class DocumentChunk(Base):
     chunk_text  = Column(Text, nullable=False)
     embedding   = Column(Vector(768))                         # gemini-embedding-2 @ 768 dims
     metadata_   = Column("metadata", JSONB)
-    source_type = Column(String, default="mock")              # "google_docs" | "notion" | "upload" | "mock"
+    source_type = Column(String, default="mock")              # "google_docs" | "notion" | "tally" | "upload" | "mock"
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

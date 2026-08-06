@@ -295,6 +295,100 @@ def load_from_notion(api_key: str, root_page_id: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Tally loader — form feedback / survey responses
+# ---------------------------------------------------------------------------
+
+_TALLY_API_KEY = os.getenv("TALLY_API_KEY", "")
+_TALLY_FORM_IDS_RAW = os.getenv("TALLY_FORM_IDS", "")
+
+
+def _tally_headers(api_key: str) -> dict:
+    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+
+def _tally_answer_text(value) -> str:
+    """Flatten a Tally answer (string, number, or a choice list/dict) to plain text."""
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    if isinstance(value, list):
+        return ", ".join(t for t in (_tally_answer_text(v) for v in value) if t)
+    if isinstance(value, dict):
+        return str(value.get("text") or value.get("label") or value.get("name") or value)
+    return str(value)
+
+
+def _tally_submission_to_doc(form_id: str, form_name: str, question_labels: dict, submission: dict) -> dict:
+    """One document per submission — keeps a single respondent's feedback intact
+    for retrieval instead of fragmenting it into a chunk per question."""
+    lines = [f"Form: {form_name}", f"Submitted: {submission.get('submittedAt', '')}", ""]
+    for response in submission.get("responses", []):
+        question_id = response.get("questionId", "")
+        label = question_labels.get(question_id, question_id or "Question")
+        answer = _tally_answer_text(response.get("answer", response.get("value")))
+        if not answer:
+            continue
+        lines.append(f"**{label}**")
+        lines.append(answer)
+        lines.append("")
+
+    submission_id = submission.get("id", "")
+    return {
+        "doc_id": f"{form_id}_{submission_id}" if submission_id else form_id,
+        "title": f"{form_name} — response {submission_id[:8]}" if submission_id else f"{form_name} response",
+        "content": "\n".join(lines).strip(),
+        "source_type": "tally",
+    }
+
+
+def load_from_tally(api_key: str, form_ids_raw: str) -> list[dict]:
+    """
+    Fetch submissions for each configured Tally form (tally.so) via the REST API.
+    Each submission becomes one document so a respondent's answers stay together.
+    """
+    form_ids = [f.strip() for f in form_ids_raw.split(",") if f.strip()]
+    headers = _tally_headers(api_key)
+    docs = []
+
+    with httpx.Client(timeout=30) as client:
+        for form_id in form_ids:
+            form_resp = client.get(f"https://api.tally.so/forms/{form_id}", headers=headers)
+            form_resp.raise_for_status()
+            form_name = form_resp.json().get("name", form_id)
+
+            fetched = 0
+            page = 1
+            while True:
+                resp = client.get(
+                    f"https://api.tally.so/forms/{form_id}/submissions",
+                    headers=headers,
+                    params={"page": page, "limit": 50},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                question_labels = {
+                    (q.get("id") or q.get("uuid")): q.get("title", "")
+                    for q in data.get("questions", [])
+                }
+
+                for submission in data.get("submissions", []):
+                    if not submission.get("responses"):
+                        continue
+                    docs.append(_tally_submission_to_doc(form_id, form_name, question_labels, submission))
+                    fetched += 1
+
+                if not data.get("hasMore"):
+                    break
+                page += 1
+
+            print(f"  Fetched {fetched} Tally submissions for form '{form_name}' ({form_id})")
+
+    return docs
+
+
+# ---------------------------------------------------------------------------
 # Multi-source document loading
 # ---------------------------------------------------------------------------
 
@@ -303,6 +397,8 @@ def load_documents(
     notion_root_page_id: str | None = None,
     public_doc_ids: list[str] | None = None,
     drive_folder_id: str | None = None,
+    tally_api_key: str | None = None,
+    tally_form_ids: list[str] | None = None,
 ) -> list[dict]:
     """Load documents from all configured sources (additive, not exclusive).
 
@@ -323,7 +419,14 @@ def load_documents(
         print(f"NOTION_API_KEY set — fetching from Notion root page {effective_notion_root}")
         docs += load_from_notion(effective_notion_key, effective_notion_root)
 
-    # Source 3: Google Drive (service account). Per-org folder takes precedence
+    # Source 3: Tally — per-request key + form ids take precedence over env vars
+    effective_tally_key = tally_api_key or _TALLY_API_KEY
+    effective_tally_forms = ",".join(tally_form_ids) if tally_form_ids else _TALLY_FORM_IDS_RAW
+    if effective_tally_key and effective_tally_forms.strip():
+        print(f"TALLY_API_KEY set — fetching submissions for forms {effective_tally_forms}")
+        docs += load_from_tally(effective_tally_key, effective_tally_forms)
+
+    # Source 4: Google Drive (service account). Per-org folder takes precedence
     # over the deployment-wide DRIVE_FOLDER_ID; the service-account JSON is always
     # a deployment secret shared across tenants (each org shares its folder with it).
     effective_folder = drive_folder_id or os.getenv("DRIVE_FOLDER_ID")
@@ -332,7 +435,7 @@ def load_documents(
         print(f"Loading from Google Drive folder {effective_folder}")
         docs += load_from_google_drive(effective_folder, service_account_json)
 
-    # Source 4: Local mock files (fallback or augmentation)
+    # Source 5: Local mock files (fallback or augmentation)
     if USE_MOCK:
         print("USE_MOCK=true — augmenting with sample_docs/")
         docs += load_from_local(SAMPLE_DOCS_PATH)
@@ -340,8 +443,8 @@ def load_documents(
     if not docs:
         raise EnvironmentError(
             "No document sources configured. Set PUBLIC_DOC_IDS, NOTION_API_KEY + "
-            "NOTION_ROOT_PAGE_ID, DRIVE_FOLDER_ID + GOOGLE_SERVICE_ACCOUNT_JSON, "
-            "or USE_MOCK=true."
+            "NOTION_ROOT_PAGE_ID, TALLY_API_KEY + TALLY_FORM_IDS, DRIVE_FOLDER_ID + "
+            "GOOGLE_SERVICE_ACCOUNT_JSON, or USE_MOCK=true."
         )
 
     return docs
@@ -409,6 +512,8 @@ async def run_ingestion(
     notion_root_page_id: str | None = None,
     public_doc_ids: list[str] | None = None,
     drive_folder_id: str | None = None,
+    tally_api_key: str | None = None,
+    tally_form_ids: list[str] | None = None,
     trigger: str = "manual",
 ) -> dict:
     # org_id is mandatory: chunks are tenant data and must never be written
@@ -436,6 +541,10 @@ async def run_ingestion(
                 org.public_doc_ids = public_doc_ids
             if drive_folder_id is not None:
                 org.drive_folder_id = drive_folder_id
+            if tally_api_key:
+                org.tally_api_key = tally_api_key
+            if tally_form_ids is not None:
+                org.tally_form_ids = tally_form_ids
         else:
             org = Organization(
                 clerk_org_id=org_id,
@@ -445,6 +554,8 @@ async def run_ingestion(
                 notion_root_page_id=notion_root_page_id,
                 public_doc_ids=public_doc_ids or [],
                 drive_folder_id=drive_folder_id,
+                tally_api_key=tally_api_key,
+                tally_form_ids=tally_form_ids or [],
             )
             session.add(org)
         session.commit()
@@ -453,6 +564,8 @@ async def run_ingestion(
         eff_notion_root = notion_root_page_id or org.notion_root_page_id
         eff_public_ids = public_doc_ids if public_doc_ids is not None else org.public_doc_ids
         eff_drive_folder = drive_folder_id or org.drive_folder_id
+        eff_tally_key = tally_api_key or org.tally_api_key
+        eff_tally_forms = tally_form_ids if tally_form_ids is not None else org.tally_form_ids
 
     # Open a job row so status is observable while the run is in flight.
     with get_session() as session:
@@ -479,6 +592,8 @@ async def run_ingestion(
             notion_root_page_id=eff_notion_root,
             public_doc_ids=eff_public_ids,
             drive_folder_id=eff_drive_folder,
+            tally_api_key=eff_tally_key,
+            tally_form_ids=eff_tally_forms,
         )
         print(f"Loaded {len(docs)} documents.")
 

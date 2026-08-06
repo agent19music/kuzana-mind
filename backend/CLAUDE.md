@@ -24,7 +24,7 @@ backend/
 ├── main.py              # FastAPI app, CORS, lifespan (init_db on startup), endpoints
 ├── auth.py              # Clerk JWT verification + require_backend_secret FastAPI dep
 ├── retrieval.py         # Embedding query → pgvector search → honest no-match fallback
-├── ingest.py            # Document loading (Notion / public docs / mock) → chunk → embed → upsert
+├── ingest.py            # Document loading (Notion / public docs / Tally / mock) → chunk → embed → upsert
 ├── database.py          # SQLAlchemy models: DocumentChunk, Organization, OrganizationMember, IngestJob
 └── sample_docs/         # Local markdown files used when USE_MOCK=true
 ```
@@ -78,7 +78,7 @@ Isolation is enforced at **two layers** — the app never falls back to an unsco
 > **Production note:** RLS is only a real backstop because queries run under a non-superuser role via `SET LOCAL ROLE`. If you change the connection strategy, keep the app off a superuser/table-owner role for tenant-data queries.
 
 - `DocumentChunk.org_id` — NOT NULL, FK → `organizations.clerk_org_id` `ON DELETE CASCADE` (org offboarding cascades chunks). Composite index `(org_id, doc_id)`.
-- `database.py::Organization` per-org config: `notion_api_key`, `notion_root_page_id`, `public_doc_ids` (JSONB), `drive_folder_id`, `logo_url`.
+- `database.py::Organization` per-org config: `notion_api_key`, `notion_root_page_id`, `public_doc_ids` (JSONB), `drive_folder_id`, `tally_api_key`, `tally_form_ids` (JSONB), `logo_url`.
 
 ---
 
@@ -95,12 +95,17 @@ Isolation is enforced at **two layers** — the app never falls back to an unsco
    - Converts Notion blocks to markdown for chunking
    - Internal integration token (`ntn_...`)
 
-3. **Google Drive (service account)**
+3. **Tally** (`tally_api_key` + `tally_form_ids` params or `TALLY_API_KEY` + `TALLY_FORM_IDS` env vars)
+   - Fetches submissions per form via `GET api.tally.so/forms/{id}/submissions` (personal access token, `Authorization: Bearer ...`)
+   - Each submission becomes one document (respondent's answers stay together instead of fragmenting per question); question labels resolved from the response's `questions` array
+   - Use case: index form/survey feedback so staff can ask what feedback they've received and get it grounded in real submissions, not a hallucinated summary
+
+4. **Google Drive (service account)**
    - `GOOGLE_SERVICE_ACCOUNT_JSON` is a deployment secret (all tenants share one service account)
    - Folder is **per-org**: `drive_folder_id` in the `/ingest` body → `organizations.drive_folder_id`. `DRIVE_FOLDER_ID` env is only a single-tenant local-dev fallback
    - Each org shares its Drive folder with the service-account email as Viewer
 
-4. **Local mock files** (`USE_MOCK=true`)
+5. **Local mock files** (`USE_MOCK=true`)
    - Reads `sample_docs/*.md`
    - Default is now `false` — set `USE_MOCK=true` only for local testing without real keys
 
@@ -141,6 +146,8 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
 | `PUBLIC_DOC_IDS` | No | `""` | Comma-separated public Google Doc IDs or URLs (global fallback) |
 | `NOTION_API_KEY` | No | `""` | Notion integration token (global fallback) |
 | `NOTION_ROOT_PAGE_ID` | No | `""` | Notion parent page ID to crawl (global fallback) |
+| `TALLY_API_KEY` | No | `""` | Tally personal access token (global fallback) |
+| `TALLY_FORM_IDS` | No | `""` | Comma-separated Tally form IDs to pull submissions from (global fallback) |
 | `DRIVE_FOLDER_ID` | Post-MVP | — | Google Drive folder ID |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Post-MVP | — | Service account JSON string |
 
