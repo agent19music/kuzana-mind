@@ -1,19 +1,29 @@
 "use client";
 import ReactMarkdown from "react-markdown";
 
+export type SourceType = "google_docs" | "notion" | "tally" | "upload" | "mock";
+
 interface DocumentCardProps {
   answer: string;
   sourceTitle?: string;
   sourceDocId?: string;
-  sourceType?: "google_docs" | "notion" | "mock";
+  sourceType?: SourceType;
   similarityScore?: number;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
   google_docs: "Google Docs",
   notion: "Notion",
+  tally: "Tally",
+  upload: "Uploaded file",
   mock: "Internal",
 };
+
+// Sources with a real external URL we can link to directly. Uploads have no
+// external URL at all — see docs/specs/file-preview-spec.md for the in-app
+// preview that replaces this link for them. Tally submissions have no
+// per-response URL either, so — like mock — they render no link.
+const LINKABLE_SOURCE_TYPES: SourceType[] = ["google_docs", "notion"];
 
 export default function DocumentCard({
   answer,
@@ -161,8 +171,8 @@ export default function DocumentCard({
         </ReactMarkdown>
       </div>
 
-      {/* Source link — Google Docs or Notion */}
-      {sourceDocId && sourceType && sourceType !== "mock" && (
+      {/* Source link — only for sources with a real external URL */}
+      {sourceDocId && sourceType && LINKABLE_SOURCE_TYPES.includes(sourceType) && (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-4)" }}>
           <a
             href={

@@ -14,7 +14,7 @@ type ChatResponse = {
   type: "document" | "staff_fallback";
   source_title?: string;
   source_doc_id?: string;
-  source_type?: "google_docs" | "notion" | "mock";
+  source_type?: "google_docs" | "notion" | "tally" | "upload" | "mock";
   staff_name?: string;
   staff_email?: string;
   staff_domain?: string;
