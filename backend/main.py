@@ -1,5 +1,6 @@
 import os
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 from dotenv import load_dotenv
 
@@ -113,36 +114,162 @@ async def stats(auth_ctx: AuthContext = Depends(require_read_auth)):
     }
 
 
+# A Tally form with more responses than this collapses into one expandable
+# group on the files page instead of one row per response. A busy form can hold
+# thousands of submissions, which is unreadable as a flat list and pointless to
+# serialize in full.
+GROUP_THRESHOLD = 5
+GROUP_PAGE_SIZE = 50
+MAX_GROUP_PAGE_SIZE = 200
+
+# Tally doc_ids are namespaced "tally:{org_id}:{form_id}_{submission_id}"
+# (namespaced_doc_id + _tally_submission_to_doc), so the owning form is
+# recoverable without a schema change — the third colon-segment up to the first
+# underscore. Tally form ids are alphanumeric, so the underscore is unambiguous.
+# tally/03 replaces this with a real form_id column; until then this works on
+# already-indexed data with no re-ingest.
+_TALLY_FORM_ID_SQL = "split_part(split_part(doc_id, ':', 3), '_', 1)"
+
+# One document per doc_id. Used as a CTE by both the list and the group-children
+# query so "a document" means the same thing in each.
+_DOCS_CTE = """
+    SELECT
+        doc_id,
+        max(title)         AS title,
+        source_type,
+        count(*)           AS chunks,
+        max(created_at)    AS last_indexed
+    FROM documents
+    WHERE org_id = :org_id
+    GROUP BY doc_id, source_type
+"""
+
+
+def _doc_row(r) -> dict:
+    return {
+        "kind": "document",
+        "doc_id": r.doc_id,
+        "title": r.title,
+        "source_type": r.source_type,
+        "chunks": r.chunks,
+        "last_indexed": r.last_indexed.isoformat() if r.last_indexed else None,
+    }
+
+
+def _form_label(sample_title: str | None, form_id: str) -> str:
+    """Tally doc titles are "{form_name} — response {id}", so the form name is
+    the part before the separator. Falls back to the form id."""
+    if sample_title and " — response " in sample_title:
+        return sample_title.split(" — response ")[0]
+    return sample_title or f"Form {form_id}"
+
+
 @app.get("/documents")
 async def list_documents(auth_ctx: AuthContext = Depends(require_read_auth)):
-    """One row per ingested document (grouped by doc_id) — powers the files page."""
+    """Files-page listing: individual documents, with large Tally forms collapsed
+    into group entries.
+
+    Returns a single `entries` list so the table renders one ordered sequence.
+    Grouping is decided server-side: a form over GROUP_THRESHOLD responses emits
+    one group entry (its children are fetched on expand via /documents/group),
+    while a small form still emits a row per response.
+    """
     org_id = auth_ctx.clerk_org_id
+
+    groups_sql = text(f"""
+        WITH docs AS ({_DOCS_CTE})
+        SELECT
+            {_TALLY_FORM_ID_SQL} AS form_id,
+            count(*)             AS doc_count,
+            sum(chunks)          AS chunks,
+            max(last_indexed)    AS last_indexed,
+            min(title)           AS sample_title
+        FROM docs
+        WHERE source_type = 'tally'
+        GROUP BY {_TALLY_FORM_ID_SQL}
+    """)
+
+    # Everything that is not a Tally response, plus the responses of small forms.
+    loose_sql = text(f"""
+        WITH docs AS ({_DOCS_CTE})
+        SELECT doc_id, title, source_type, chunks, last_indexed
+        FROM docs
+        WHERE source_type <> 'tally'
+           OR {_TALLY_FORM_ID_SQL} = ANY(:small_forms)
+        ORDER BY last_indexed DESC
+    """)
+
     with session_for_org(org_id) as db:
-        rows = (
-            db.query(
-                DocumentChunk.doc_id,
-                DocumentChunk.title,
-                DocumentChunk.source_type,
-                func.count(DocumentChunk.id).label("chunks"),
-                func.max(DocumentChunk.created_at).label("last_indexed"),
-            )
-            .filter(DocumentChunk.org_id == org_id)
-            .group_by(DocumentChunk.doc_id, DocumentChunk.title, DocumentChunk.source_type)
-            .order_by(func.max(DocumentChunk.created_at).desc())
-            .all()
-        )
+        group_rows = db.execute(groups_sql, {"org_id": org_id}).mappings().all()
+
+        small_forms = [r["form_id"] for r in group_rows if r["doc_count"] <= GROUP_THRESHOLD]
+        loose_rows = db.execute(
+            loose_sql, {"org_id": org_id, "small_forms": small_forms}
+        ).mappings().all()
+
+    entries = [_doc_row(SimpleNamespace(**r)) for r in loose_rows]
+
+    for r in group_rows:
+        if r["doc_count"] <= GROUP_THRESHOLD:
+            continue  # already listed individually above
+        entries.append({
+            "kind": "group",
+            "group_key": r["form_id"],
+            "label": _form_label(r["sample_title"], r["form_id"]),
+            "source_type": "tally",
+            "doc_count": r["doc_count"],
+            "chunks": int(r["chunks"] or 0),
+            "last_indexed": r["last_indexed"].isoformat() if r["last_indexed"] else None,
+        })
+
+    # Newest first, with undated entries last rather than crashing the sort.
+    entries.sort(key=lambda e: e["last_indexed"] or "", reverse=True)
+
+    return {"entries": entries, "group_threshold": GROUP_THRESHOLD}
+
+
+@app.get("/documents/group")
+async def list_group_documents(
+    key: str,
+    limit: int = GROUP_PAGE_SIZE,
+    offset: int = 0,
+    auth_ctx: AuthContext = Depends(require_read_auth),
+):
+    """One page of the responses inside a Tally form group.
+
+    Paginated because a single form can hold thousands of submissions; the files
+    page fetches this only when a group is expanded.
+    """
+    org_id = auth_ctx.clerk_org_id
+    limit = max(1, min(limit, MAX_GROUP_PAGE_SIZE))
+    offset = max(0, offset)
+
+    page_sql = text(f"""
+        WITH docs AS ({_DOCS_CTE})
+        SELECT doc_id, title, source_type, chunks, last_indexed
+        FROM docs
+        WHERE source_type = 'tally' AND {_TALLY_FORM_ID_SQL} = :key
+        ORDER BY last_indexed DESC, doc_id
+        LIMIT :limit OFFSET :offset
+    """)
+    count_sql = text(f"""
+        WITH docs AS ({_DOCS_CTE})
+        SELECT count(*) AS total
+        FROM docs
+        WHERE source_type = 'tally' AND {_TALLY_FORM_ID_SQL} = :key
+    """)
+
+    with session_for_org(org_id) as db:
+        rows = db.execute(
+            page_sql, {"org_id": org_id, "key": key, "limit": limit, "offset": offset}
+        ).mappings().all()
+        total = db.execute(count_sql, {"org_id": org_id, "key": key}).scalar() or 0
 
     return {
-        "documents": [
-            {
-                "doc_id": r.doc_id,
-                "title": r.title,
-                "source_type": r.source_type,
-                "chunks": r.chunks,
-                "last_indexed": r.last_indexed.isoformat() if r.last_indexed else None,
-            }
-            for r in rows
-        ]
+        "documents": [_doc_row(SimpleNamespace(**r)) for r in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 
