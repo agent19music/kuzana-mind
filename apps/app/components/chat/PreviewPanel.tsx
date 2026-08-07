@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
 import PdfPreview from "./PdfPreview";
+import DocxPreview from "./DocxPreview";
 
 type PreviewData =
   | { mode: "text"; title: string | null; content: string }
   | { mode: "markdown"; title: string | null; content: string }
-  | { mode: "pdf"; title: string | null; signed_url: string; page_count: number };
+  | { mode: "pdf"; title: string | null; signed_url: string; page_count: number }
+  | { mode: "docx"; title: string | null; signed_url: string };
 
 type Props = {
   docId: string;
@@ -30,6 +32,31 @@ function splitOnExcerpt(content: string, excerpt: string | undefined) {
     match: content.slice(idx, idx + excerpt.length),
     after: content.slice(idx + excerpt.length),
   };
+}
+
+// Shared by markdown/docx modes: neither can safely support an inline <mark>
+// (react-markdown doesn't render raw HTML by default, and shouldn't for an
+// org's own uploaded content; mammoth's sanitized HTML has no reliable
+// text-node offset to wrap after conversion) — this gets the same "here's
+// what was cited" value as a callout instead.
+function ExcerptCallout({ excerpt, calloutRef }: { excerpt: string; calloutRef: React.RefObject<HTMLDivElement | null> }) {
+  return (
+    <div
+      ref={calloutRef}
+      style={{
+        background: "#FFFBEB",
+        border: "1px solid #FEF3C7",
+        borderRadius: 8,
+        padding: "10px 12px",
+        marginBottom: 16,
+        fontSize: 13,
+        color: "#78350F",
+        lineHeight: 1.6,
+      }}
+    >
+      {excerpt}
+    </div>
+  );
 }
 
 export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Props) {
@@ -165,28 +192,7 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
           )}
           {data?.mode === "markdown" && (
             <>
-              {/* A citation callout, not an inline highlight — react-markdown
-                  doesn't render raw HTML by default (and shouldn't, for
-                  content from an org's own uploads), so there's no safe way
-                  to wrap a <mark> around arbitrary rendered markdown output.
-                  This gets the same "here's what was cited" value instead. */}
-              {excerpt && (
-                <div
-                  ref={calloutRef}
-                  style={{
-                    background: "#FFFBEB",
-                    border: "1px solid #FEF3C7",
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    marginBottom: 16,
-                    fontSize: 13,
-                    color: "#78350F",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {excerpt}
-                </div>
-              )}
+              {excerpt && <ExcerptCallout excerpt={excerpt} calloutRef={calloutRef} />}
               <div style={{ fontSize: 14, color: "#333", lineHeight: 1.7 }}>
                 <ReactMarkdown>{data.content}</ReactMarkdown>
               </div>
@@ -194,6 +200,12 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
           )}
           {data?.mode === "pdf" && (
             <PdfPreview signedUrl={data.signed_url} pageCount={data.page_count} excerpt={excerpt} />
+          )}
+          {data?.mode === "docx" && (
+            <>
+              {excerpt && <ExcerptCallout excerpt={excerpt} calloutRef={calloutRef} />}
+              <DocxPreview signedUrl={data.signed_url} />
+            </>
           )}
         </div>
       </div>

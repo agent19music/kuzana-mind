@@ -416,3 +416,28 @@ element {
 element {
   -ms-overflow-style: none;
 }
+
+/* Docx preview (mammoth.js output) — mammoth emits raw structural HTML with
+   the browser's default heading/bold weights, which violates this app's
+   design rule (fontWeight: 400 everywhere, hierarchy via size/color only).
+   Overriding here since the markup itself is generated, not hand-authored. */
+.docx-preview-body h1,
+.docx-preview-body h2,
+.docx-preview-body h3,
+.docx-preview-body h4,
+.docx-preview-body strong,
+.docx-preview-body b {
+  font-weight: 400 !important;
+  text-transform: none !important;
+}
+.docx-preview-body h1 { font-size: 20px; color: #111; margin: 0 0 12px; }
+.docx-preview-body h2 { font-size: 17px; color: #111; margin: 20px 0 8px; }
+.docx-preview-body h3 { font-size: 15px; color: #333; margin: 16px 0 6px; }
+.docx-preview-body p { margin: 0 0 10px; }
+.docx-preview-body table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.docx-preview-body td, .docx-preview-body th {
+  border: 1px solid #E8E8E8;
+  padding: 6px 10px;
+  font-size: 13px;
+  text-align: left;
+}

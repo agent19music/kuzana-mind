@@ -158,10 +158,11 @@ async def preview_document(
     segment, so we don't have to worry about escaping slashes from
     folder-upload relative-path filenames.
 
-    Native PDF mode requires both a stored original (storage_path — only
-    present for uploads made after the GCS storage layer shipped) and GCS
-    actually being configured in this environment; everything else, and any
-    upload made before that, falls back to reassembled text.
+    Native pdf/docx modes require both a stored original (storage_path —
+    only present for uploads made after the GCS storage layer shipped) and
+    GCS actually being configured in this environment; everything else, and
+    any upload made before that, falls back to reassembled text (or
+    markdown mode, for .md).
     """
     from database import DocumentFile
     from ingest import namespaced_doc_id
@@ -176,17 +177,20 @@ async def preview_document(
             .first()
         )
 
-        if (
-            file_row and file_row.storage_path
-            and file_row.mime_type == "application/pdf"
-            and storage.enabled()
-        ):
-            return {
-                "mode": "pdf",
-                "title": file_row.title,
-                "signed_url": storage.signed_url(file_row.storage_path),
-                "page_count": file_row.page_count,
-            }
+        if file_row and file_row.storage_path and storage.enabled():
+            if file_row.mime_type == "application/pdf":
+                return {
+                    "mode": "pdf",
+                    "title": file_row.title,
+                    "signed_url": storage.signed_url(file_row.storage_path),
+                    "page_count": file_row.page_count,
+                }
+            if file_row.mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                return {
+                    "mode": "docx",
+                    "title": file_row.title,
+                    "signed_url": storage.signed_url(file_row.storage_path),
+                }
 
         rows = (
             db.query(DocumentChunk.chunk_text, DocumentChunk.metadata_, DocumentChunk.title)
@@ -544,11 +548,14 @@ async def upload_files(
         title = Path(file.filename).stem.replace("_", " ").replace("-", " ").title()
 
         # Browsers/mimetypes are unreliable for .md specifically (often
-        # empty or application/octet-stream) — pin it explicitly since the
-        # preview endpoint's mode switch depends on this value being stable.
-        mime_type = "text/markdown" if ext == ".md" else (
-            file.content_type or mimetypes.guess_type(file.filename)[0]
-        )
+        # empty or application/octet-stream); pin known extensions explicitly
+        # rather than trust it, since the preview endpoint's mode switch
+        # depends on this value being stable.
+        _PINNED_MIME = {
+            ".md": "text/markdown",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        mime_type = _PINNED_MIME.get(ext) or file.content_type or mimetypes.guess_type(file.filename)[0]
         storage_path = None
         if storage.enabled():
             try:
