@@ -67,10 +67,37 @@ jobs:
             --image=${{ env.IMAGE }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }}
-          gcloud run jobs execute migration \
+
+          if gcloud run jobs execute migration \
             --region=${{ env.REGION }} \
             --project=${{ env.PROJECT_ID }} \
-            --wait
+            --wait; then
+            exit 0
+          fi
+
+          echo "::group::Migration execution failed — fetching execution details and logs"
+          EXECUTION=$(gcloud run jobs executions list \
+            --job=migration \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} \
+            --sort-by='~createTime' \
+            --format='value(name.basename())' \
+            --limit=1)
+          echo "Execution: $EXECUTION"
+
+          gcloud run jobs executions describe "$EXECUTION" \
+            --region=${{ env.REGION }} \
+            --project=${{ env.PROJECT_ID }} || true
+
+          gcloud logging read \
+            "resource.type=cloud_run_job AND resource.labels.job_name=migration AND resource.labels.location=${{ env.REGION }} AND labels.\"run.googleapis.com/execution_name\"=\"$EXECUTION\"" \
+            --project=${{ env.PROJECT_ID }} \
+            --order=asc \
+            --limit=200 \
+            --format='value(textPayload)' || true
+          echo "::endgroup::"
+
+          exit 1
 
       # A failed migration silently blocked every deploy for a month before
       # anyone noticed. This makes that failure loud: it files (or
