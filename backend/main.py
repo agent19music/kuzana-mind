@@ -15,7 +15,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, text
 
 from auth import AuthContext, require_auth, require_backend_secret, require_read_auth
-from extract import SUPPORTED, extract_text
+import storage
+from extract import SUPPORTED, extract_text, pdf_page_count
 from database import Conversation, DocumentChunk, Message, session_for_org
 from embeddings import embed_documents
 from ingest import run_ingestion
@@ -478,6 +479,7 @@ async def upload_files(
     Accept one or more files, extract text, chunk, embed, and upsert.
     org_id comes from the verified Clerk JWT — never from the request body.
     """
+    import mimetypes
     from pathlib import Path
     from ingest import chunk_document, namespaced_doc_id
 
@@ -511,17 +513,33 @@ async def upload_files(
 
         title = Path(file.filename).stem.replace("_", " ").replace("-", " ").title()
 
+        mime_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+        storage_path = None
+        if storage.enabled():
+            try:
+                storage_path = storage.upload_original(org_id, file.filename, raw, mime_type)
+            except Exception as e:
+                # Storage failure shouldn't block ingestion — the text pipeline
+                # already succeeded; this doc just falls back to the text-only
+                # preview instead of native rendering (see storage-path==null
+                # handling in the frontend PreviewPanel).
+                print(f"GCS upload failed for {file.filename}: {e}")
+
         docs.append({
             "doc_id": namespaced_doc_id("upload", org_id, file.filename),
             "title": title,
             "content": text,
             "source_type": "upload",
+            "storage_path": storage_path,
+            "mime_type": mime_type,
+            "byte_size": len(raw),
+            "page_count": pdf_page_count(raw) if ext == ".pdf" else None,
         })
 
     if not docs:
         return {"status": "ok", "uploaded": 0, "chunks": 0, "skipped": skipped}
 
-    from database import DocumentChunk
+    from database import DocumentChunk, DocumentFile
 
     all_chunks = []
     for doc in docs:
@@ -551,6 +569,19 @@ async def upload_files(
                 source_type="upload",
             ))
             upserted += 1
+
+        for doc in docs:
+            session.query(DocumentFile).filter_by(doc_id=doc["doc_id"], org_id=org_id).delete()
+            session.add(DocumentFile(
+                org_id=org_id,
+                doc_id=doc["doc_id"],
+                source_type="upload",
+                title=doc["title"],
+                storage_path=doc["storage_path"],
+                mime_type=doc["mime_type"],
+                byte_size=doc["byte_size"],
+                page_count=doc["page_count"],
+            ))
 
         session.commit()
 
@@ -608,8 +639,11 @@ async def clerk_webhook(
         elif event_type == "organization.deleted":
             clerk_org_id = data.get("id")
             if clerk_org_id:
-                # FK ON DELETE CASCADE clears documents + ingest_jobs; members
-                # key on the org string separately, so remove them explicitly.
+                # FK ON DELETE CASCADE clears documents/document_files/ingest_jobs
+                # rows; members key on the org string separately, so remove them
+                # explicitly. GCS objects live outside Postgres entirely — the
+                # cascade can't reach them, so delete the org's stored files here.
+                storage.delete_org_prefix(clerk_org_id)
                 db.query(OrganizationMember).filter_by(clerk_org_id=clerk_org_id).delete()
                 db.query(Organization).filter_by(clerk_org_id=clerk_org_id).delete()
                 db.commit()

@@ -74,3 +74,14 @@ def extract_text(filename: str, content: bytes) -> str:
         return "\n".join(lines)
 
     return ""  # unsupported — caller adds to skipped list
+
+
+def pdf_page_count(content: bytes) -> int | None:
+    """Best-effort page count for storage metadata (native PDF preview page
+    jump). Returns None for anything that isn't a valid PDF."""
+    import pdfplumber
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            return len(pdf.pages)
+    except Exception:
+        return None
