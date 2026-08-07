@@ -87,6 +87,33 @@ class DocumentChunk(Base):
     )
 
 
+class DocumentFile(Base):
+    """One row per ingested document (not per chunk) — holds preview/storage
+    metadata. Only source_type == "upload" rows are populated for now; see
+    docs/specs/file-preview-spec.md. Under RLS like `documents`."""
+    __tablename__ = "document_files"
+
+    id           = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id       = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    doc_id       = Column(String, nullable=False)  # same value as DocumentChunk.doc_id
+    source_type  = Column(String, nullable=False)
+    title        = Column(String)
+    storage_path = Column(String, nullable=True)   # GCS object path — null until native preview ships
+    mime_type    = Column(String, nullable=True)
+    byte_size    = Column(Integer, nullable=True)
+    page_count   = Column(Integer, nullable=True)  # PDFs only
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "doc_id", name="uq_document_files_org_doc"),
+        Index("ix_document_files_org_doc", "org_id", "doc_id"),
+    )
+
+
 class IngestJob(Base):
     """One row per ingestion run — powers /ingest/status and the dashboard feed.
 

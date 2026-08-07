@@ -69,6 +69,10 @@ async def answer_query(
             "source_title": best["title"],
             "source_doc_id": _provider_doc_id(best["doc_id"]),
             "source_type": best.get("source_type", "mock"),
+            # Raw chunk text (not the paraphrased answer above) — the preview
+            # panel needs a literal substring of the source document to
+            # highlight, which a synthesized answer can't guarantee.
+            "source_excerpt": best["chunk_text"][:500],
             "similarity_score": round(best["similarity_score"], 4),
         }
 

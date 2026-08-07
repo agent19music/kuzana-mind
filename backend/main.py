@@ -15,7 +15,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, text
 
 from auth import AuthContext, require_auth, require_backend_secret, require_read_auth
-from extract import SUPPORTED, extract_text
+import storage
+from extract import SUPPORTED, extract_text, pdf_page_count
 from database import Conversation, DocumentChunk, Message, session_for_org
 from embeddings import embed_documents
 from ingest import run_ingestion
@@ -58,7 +59,8 @@ class ChatResponse(BaseModel):
     conversation_id: str            # thread this turn belongs to
     source_title: str | None = None
     source_doc_id: str | None = None
-    source_type: str | None = None  # "google_docs" | "notion" | "tally" | "mock"
+    source_type: str | None = None  # "google_docs" | "notion" | "tally" | "upload" | "mock"
+    source_excerpt: str | None = None  # raw chunk text, for preview-panel highlighting
     staff_name: str | None = None
     staff_email: str | None = None
     staff_domain: str | None = None
@@ -70,7 +72,7 @@ class ChatResponse(BaseModel):
 # Assistant source/staff metadata persisted per message — everything the answer
 # dict carries except the answer text itself, so a reopened thread rebuilds cards.
 _META_KEYS = (
-    "type", "source_title", "source_doc_id", "source_type",
+    "type", "source_title", "source_doc_id", "source_type", "source_excerpt",
     "staff_name", "staff_email", "staff_domain", "staff_title",
     "staff_department", "similarity_score",
 )
@@ -141,6 +143,77 @@ async def list_documents(auth_ctx: AuthContext = Depends(require_read_auth)):
             }
             for r in rows
         ]
+    }
+
+
+@app.get("/documents/preview")
+async def preview_document(
+    doc_id: str,
+    source_type: str = "upload",
+    auth_ctx: AuthContext = Depends(require_read_auth),
+):
+    """
+    doc_id is the raw provider id (e.g. the uploaded filename) exactly as
+    returned in ChatResponse.source_doc_id. Query param rather than a path
+    segment, so we don't have to worry about escaping slashes from
+    folder-upload relative-path filenames.
+
+    Native pdf/docx modes require both a stored original (storage_path —
+    only present for uploads made after the GCS storage layer shipped) and
+    GCS actually being configured in this environment; everything else, and
+    any upload made before that, falls back to reassembled text (or
+    markdown mode, for .md).
+    """
+    from database import DocumentFile
+    from ingest import namespaced_doc_id
+
+    org_id = auth_ctx.clerk_org_id
+    full_doc_id = namespaced_doc_id(source_type, org_id, doc_id)
+
+    with session_for_org(org_id) as db:
+        file_row = (
+            db.query(DocumentFile)
+            .filter(DocumentFile.org_id == org_id, DocumentFile.doc_id == full_doc_id)
+            .first()
+        )
+
+        if file_row and file_row.storage_path and storage.enabled():
+            if file_row.mime_type == "application/pdf":
+                return {
+                    "mode": "pdf",
+                    "title": file_row.title,
+                    "signed_url": storage.signed_url(file_row.storage_path),
+                    "page_count": file_row.page_count,
+                }
+            if file_row.mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                return {
+                    "mode": "docx",
+                    "title": file_row.title,
+                    "signed_url": storage.signed_url(file_row.storage_path),
+                }
+
+        rows = (
+            db.query(DocumentChunk.chunk_text, DocumentChunk.metadata_, DocumentChunk.title)
+            .filter(DocumentChunk.org_id == org_id, DocumentChunk.doc_id == full_doc_id)
+            .all()
+        )
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    ordered = sorted(rows, key=lambda r: (r.metadata_ or {}).get("chunk_index", 0))
+    content = "\n\n".join(r.chunk_text for r in ordered)
+
+    # .md uploads: the reassembled chunk text IS the original markdown source
+    # (extract_text decodes .md as plain text, unmodified) — render it as
+    # such instead of a flat paragraph. No storage/GCS dependency, unlike PDF.
+    if file_row and file_row.mime_type == "text/markdown":
+        return {"mode": "markdown", "title": ordered[0].title, "content": content}
+
+    return {
+        "mode": "text",
+        "title": ordered[0].title,
+        "content": content,
     }
 
 
@@ -440,6 +513,7 @@ async def upload_files(
     Accept one or more files, extract text, chunk, embed, and upsert.
     org_id comes from the verified Clerk JWT — never from the request body.
     """
+    import mimetypes
     from pathlib import Path
     from ingest import chunk_document, namespaced_doc_id
 
@@ -473,17 +547,41 @@ async def upload_files(
 
         title = Path(file.filename).stem.replace("_", " ").replace("-", " ").title()
 
+        # Browsers/mimetypes are unreliable for .md specifically (often
+        # empty or application/octet-stream); pin known extensions explicitly
+        # rather than trust it, since the preview endpoint's mode switch
+        # depends on this value being stable.
+        _PINNED_MIME = {
+            ".md": "text/markdown",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        mime_type = _PINNED_MIME.get(ext) or file.content_type or mimetypes.guess_type(file.filename)[0]
+        storage_path = None
+        if storage.enabled():
+            try:
+                storage_path = storage.upload_original(org_id, file.filename, raw, mime_type)
+            except Exception as e:
+                # Storage failure shouldn't block ingestion — the text pipeline
+                # already succeeded; this doc just falls back to the text-only
+                # preview instead of native rendering (see storage-path==null
+                # handling in the frontend PreviewPanel).
+                print(f"GCS upload failed for {file.filename}: {e}")
+
         docs.append({
             "doc_id": namespaced_doc_id("upload", org_id, file.filename),
             "title": title,
             "content": text,
             "source_type": "upload",
+            "storage_path": storage_path,
+            "mime_type": mime_type,
+            "byte_size": len(raw),
+            "page_count": pdf_page_count(raw) if ext == ".pdf" else None,
         })
 
     if not docs:
         return {"status": "ok", "uploaded": 0, "chunks": 0, "skipped": skipped}
 
-    from database import DocumentChunk
+    from database import DocumentChunk, DocumentFile
 
     all_chunks = []
     for doc in docs:
@@ -513,6 +611,19 @@ async def upload_files(
                 source_type="upload",
             ))
             upserted += 1
+
+        for doc in docs:
+            session.query(DocumentFile).filter_by(doc_id=doc["doc_id"], org_id=org_id).delete()
+            session.add(DocumentFile(
+                org_id=org_id,
+                doc_id=doc["doc_id"],
+                source_type="upload",
+                title=doc["title"],
+                storage_path=doc["storage_path"],
+                mime_type=doc["mime_type"],
+                byte_size=doc["byte_size"],
+                page_count=doc["page_count"],
+            ))
 
         session.commit()
 
@@ -570,8 +681,11 @@ async def clerk_webhook(
         elif event_type == "organization.deleted":
             clerk_org_id = data.get("id")
             if clerk_org_id:
-                # FK ON DELETE CASCADE clears documents + ingest_jobs; members
-                # key on the org string separately, so remove them explicitly.
+                # FK ON DELETE CASCADE clears documents/document_files/ingest_jobs
+                # rows; members key on the org string separately, so remove them
+                # explicitly. GCS objects live outside Postgres entirely — the
+                # cascade can't reach them, so delete the org's stored files here.
+                storage.delete_org_prefix(clerk_org_id)
                 db.query(OrganizationMember).filter_by(clerk_org_id=clerk_org_id).delete()
                 db.query(Organization).filter_by(clerk_org_id=clerk_org_id).delete()
                 db.commit()
