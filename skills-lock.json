@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "animate": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/animate/SKILL.md",
+      "computedHash": "5c7094be3a84f8083dc081d15467d0199836a7ca43891bc83f6ce22bcf23de08"
+    },
     "animation-vocabulary": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
@@ -114,6 +120,12 @@
       "sourceType": "github",
       "skillPath": "skills/image-to-code-skill/SKILL.md",
       "computedHash": "58517b03b2a01f4c9ba65861559d03df931400871bbc200978c975b24bb92c73"
+    },
+    "improve-animations": {
+      "source": "emilkowalski/skill",
+      "sourceType": "github",
+      "skillPath": "skills/improve-animations/SKILL.md",
+      "computedHash": "eeb219a407e325b687af88db25771cc3018e3148245604112f5ac6990b6fd79c"
     },
     "minimalist-ui": {
       "source": "Leonxlnx/taste-skill",

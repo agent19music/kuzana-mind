@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { UploadSimple, Plus, FolderSimplePlus } from "@phosphor-icons/react";
 import DashboardShell from "../../../components/DashboardShell";
+import UploadQueue, { type QueueItem } from "./UploadQueue";
+
+const UPLOAD_CONCURRENCY = 3;
+const SETTLE_MS = 1400;
+const REFRESH_DEBOUNCE_MS = 350;
+
+function fileDisplayName(file: File): string {
+  return (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+}
 
 type DocFile = {
   id: string;
@@ -67,10 +76,15 @@ export default function FilesPage() {
   const [files, setFiles] = useState<DocFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const queueRef = useRef<QueueItem[]>([]);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
 
   const loadFiles = useCallback(async () => {
     try {
@@ -78,14 +92,11 @@ export default function FilesPage() {
       const data = await res.json();
       if (!res.ok) {
         setFiles([]);
-        setError(null);
         return;
       }
       setFiles(mapDocuments(data.documents ?? []));
-      setError(null);
     } catch {
       setFiles([]);
-      setError(null);
     } finally {
       setLoading(false);
     }
@@ -95,28 +106,98 @@ export default function FilesPage() {
     loadFiles();
   }, [loadFiles]);
 
-  const totalChunks = files.reduce((n, f) => n + f.chunks, 0);
+  useEffect(() => {
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    };
+  }, []);
 
-  const uploadFiles = useCallback(async (filesToUpload: File[]) => {
-    if (!filesToUpload.length) return;
-    setUploading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      filesToUpload.forEach((f) => {
-        const name = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
-        formData.append("files", f, name);
-      });
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      await loadFiles();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setUploading(false);
-    }
+  const totalChunks = files.reduce((n, f) => n + f.chunks, 0);
+  const activeCount = queue.filter((q) => q.status === "queued" || q.status === "uploading").length;
+
+  const updateItem = useCallback((id: string, patch: Partial<QueueItem>) => {
+    setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+  }, []);
+
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => loadFiles(), REFRESH_DEBOUNCE_MS);
   }, [loadFiles]);
+
+  const scheduleRemoval = useCallback((id: string) => {
+    setTimeout(() => {
+      setQueue((prev) => prev.filter((q) => q.id !== id));
+    }, SETTLE_MS);
+  }, []);
+
+  // Each file is its own request so one bad file never blocks the rest of the
+  // batch, and status (upload vs. indexing failure) is knowable per file.
+  const processItem = useCallback(async (item: QueueItem) => {
+    updateItem(item.id, { status: "uploading", reason: undefined });
+
+    const formData = new FormData();
+    formData.append("files", item.file, item.name);
+
+    let res: Response;
+    try {
+      res = await fetch("/api/upload", { method: "POST", body: formData });
+    } catch {
+      // The request never made it to the server — nothing to retry against,
+      // the user just has to reselect the file.
+      updateItem(item.id, { status: "upload_failed", reason: "Couldn't reach the server" });
+      return;
+    }
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      updateItem(item.id, { status: "chunk_failed", reason: data?.error ?? "Processing failed" });
+      return;
+    }
+
+    const skipped = (data?.skipped ?? []).find((s: { name: string }) => s.name === item.name);
+    if (skipped) {
+      updateItem(item.id, { status: "chunk_failed", reason: skipped.reason });
+      return;
+    }
+
+    updateItem(item.id, { status: "done" });
+    scheduleRefresh();
+    scheduleRemoval(item.id);
+  }, [updateItem, scheduleRefresh, scheduleRemoval]);
+
+  const runQueue = useCallback((items: QueueItem[]) => {
+    let next = 0;
+    async function worker() {
+      while (next < items.length) {
+        const item = items[next++];
+        await processItem(item);
+      }
+    }
+    const workers = Math.min(UPLOAD_CONCURRENCY, items.length);
+    for (let i = 0; i < workers; i++) worker();
+  }, [processItem]);
+
+  const uploadFiles = useCallback((filesToUpload: File[]) => {
+    if (!filesToUpload.length) return;
+    const newItems: QueueItem[] = filesToUpload.map((file) => ({
+      id: crypto.randomUUID(),
+      file,
+      name: fileDisplayName(file),
+      status: "queued",
+    }));
+    setQueue((prev) => [...prev, ...newItems]);
+    runQueue(newItems);
+  }, [runQueue]);
+
+  const retryItem = useCallback((id: string) => {
+    const item = queueRef.current.find((q) => q.id === id);
+    if (item) processItem(item);
+  }, [processItem]);
+
+  const dismissItem = useCallback((id: string) => {
+    setQueue((prev) => prev.filter((q) => q.id !== id));
+  }, []);
 
   return (
     <DashboardShell>
@@ -161,26 +242,13 @@ export default function FilesPage() {
                 Files
               </h1>
               <p style={{ fontSize: 14, color: "#888", marginTop: 8 }}>
-                {loading ? "Loading…" : `${files.length} documents · ${totalChunks.toLocaleString()} chunks indexed`}
+                {loading
+                  ? "Loading…"
+                  : `${files.length} documents · ${totalChunks.toLocaleString()} chunks indexed`}
+                {activeCount > 0 && ` · ${activeCount} uploading`}
               </p>
             </div>
           </div>
-
-          {error && (
-            <div
-              style={{
-                background: "#FEF2F2",
-                border: "1px solid #FECACA",
-                borderRadius: 10,
-                padding: "12px 16px",
-                marginBottom: 24,
-                fontSize: 13,
-                color: "#B91C1C",
-              }}
-            >
-              {error}
-            </div>
-          )}
 
           {/* Drop zone / Click to upload */}
           <div
@@ -193,7 +261,7 @@ export default function FilesPage() {
             }}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
-            onClick={() => !uploading && fileInputRef.current?.click()}
+            onClick={() => fileInputRef.current?.click()}
             style={{
               border: `2px dashed ${dragging ? "#1a1a1a" : "#DCDCDC"}`,
               borderRadius: 12,
@@ -202,7 +270,7 @@ export default function FilesPage() {
               marginBottom: 32,
               background: dragging ? "#F4F4F4" : "#fff",
               transition: "border-color 150ms var(--ease-out), background 150ms var(--ease-out), transform 150ms var(--ease-out)",
-              cursor: uploading ? "not-allowed" : "pointer",
+              cursor: "pointer",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -210,13 +278,7 @@ export default function FilesPage() {
               gap: 12,
             }}
           >
-            {uploading ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="spinner" />
-                <span style={{ fontSize: 14, color: "#6b6b6b" }}>Uploading and indexing documents…</span>
-              </div>
-            ) : (
-              <>
+            <>
                 <div
                   style={{
                     width: 44,
@@ -287,9 +349,10 @@ export default function FilesPage() {
                     <FolderSimplePlus size={14} /> Choose folder
                   </button>
                 </div>
-              </>
-            )}
+            </>
           </div>
+
+          <UploadQueue items={queue} onRetry={retryItem} onDismiss={dismissItem} />
 
           {/* File table */}
           <div

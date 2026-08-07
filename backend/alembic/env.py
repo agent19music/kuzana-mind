@@ -26,7 +26,10 @@ if config.config_file_name is not None:
 database_url = os.environ.get("DATABASE_URL")
 if not database_url:
     raise RuntimeError("DATABASE_URL is not set; cannot run migrations.")
-config.set_main_option("sqlalchemy.url", database_url)
+# ConfigParser (which set_main_option writes through to) treats "%" as the
+# start of interpolation syntax, so a literal "%" in the URL (e.g. from a
+# percent-encoded password) raises ValueError unless doubled here.
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
