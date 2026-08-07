@@ -19,7 +19,7 @@ import storage
 from extract import SUPPORTED, extract_text, pdf_page_count
 from database import Conversation, DocumentChunk, Message, session_for_org
 from embeddings import embed_documents
-from ingest import run_ingestion
+from ingest import create_ingest_job, run_ingestion
 from retrieval import answer_query
 
 
@@ -447,6 +447,13 @@ async def ingest(
     req = request or IngestRequest()
     if not req.org_id:
         raise HTTPException(status_code=400, detail="org_id is required for ingestion.")
+
+    # Create the job row synchronously so the response can carry its id. The
+    # client polls that id to know when the sync actually finished — a 202 alone
+    # says nothing about completion, which is why the UI used to need a manual
+    # refresh before a newly configured connector showed as connected.
+    job_id = create_ingest_job(req.org_id, req.trigger)
+
     background_tasks.add_task(
         run_ingestion,
         org_id=req.org_id,
@@ -459,8 +466,9 @@ async def ingest(
         tally_api_key=req.tally_api_key,
         tally_form_ids=req.tally_form_ids,
         trigger=req.trigger,
+        job_id=job_id,
     )
-    return {"status": "started", "org_id": req.org_id}
+    return {"status": "started", "org_id": req.org_id, "job_id": job_id}
 
 
 @app.get("/ingest/status")
@@ -495,6 +503,137 @@ async def ingest_status(auth_ctx: AuthContext = Depends(require_read_auth)):
                 for j in jobs
             ]
         }
+
+
+@app.get("/ingest/jobs/{job_id}")
+async def ingest_job(job_id: str, auth_ctx: AuthContext = Depends(require_read_auth)):
+    """A single ingestion run, for polling one sync to completion.
+
+    Org-filtered as well as id-filtered so a job id from another tenant reads
+    as absent rather than leaking its status.
+    """
+    from database import IngestJob, get_session
+
+    with get_session() as db:
+        job = (
+            db.query(IngestJob)
+            .filter(IngestJob.id == job_id, IngestJob.org_id == auth_ctx.clerk_org_id)
+            .first()
+        )
+        if not job:
+            raise HTTPException(status_code=404, detail="No such ingestion job.")
+        return {
+            "id": str(job.id),
+            "status": job.status,
+            "trigger": job.trigger,
+            "documents": job.documents,
+            "chunks": job.chunks,
+            "error": job.error,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Connections
+# ---------------------------------------------------------------------------
+
+# Which chunk source_type each connector writes. Drive is absent on purpose:
+# its loader also tags chunks "google_docs" (ingest.py::load_from_drive), so
+# Drive's indexed volume is not separable from public Docs today. Until it gets
+# its own source_type, Drive reports from stored config + job state only.
+_CONNECTOR_SOURCE_TYPES = {
+    "notion": "notion",
+    "google_docs": "google_docs",
+    "tally": "tally",
+}
+
+
+@app.get("/connections")
+async def connections(auth_ctx: AuthContext = Depends(require_read_auth)):
+    """Per-connector state for the connections page.
+
+    Reports *configuration* alongside indexed volume, which the UI cannot infer
+    from /stats alone: source_types only says "chunks of this kind exist", so a
+    connector with saved credentials but no data yet was indistinguishable from
+    one that was never set up. Returns booleans — never the stored credentials.
+    """
+    from database import IngestJob, Organization, get_session
+
+    org_id = auth_ctx.clerk_org_id
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=org_id).first()
+
+        configured = {
+            "notion": bool(org and org.notion_api_key and org.notion_root_page_id),
+            "google_docs": bool(org and org.public_doc_ids),
+            "tally": bool(org and org.tally_api_key and org.tally_form_ids),
+            "drive": bool(org and org.drive_folder_id),
+        }
+
+        latest = (
+            db.query(IngestJob)
+            .filter(IngestJob.org_id == org_id)
+            .order_by(IngestJob.started_at.desc())
+            .first()
+        )
+
+    # Indexed volume per source, from the tenant-scoped (RLS) session.
+    with session_for_org(org_id) as db:
+        rows = (
+            db.query(
+                DocumentChunk.source_type,
+                func.count(DocumentChunk.id).label("chunks"),
+                func.max(DocumentChunk.created_at).label("last_synced"),
+            )
+            .filter(DocumentChunk.org_id == org_id)
+            .group_by(DocumentChunk.source_type)
+            .all()
+        )
+    by_source = {r.source_type: r for r in rows}
+
+    syncing = bool(latest and latest.status == "running")
+    failed = bool(latest and latest.status == "failed")
+
+    connectors = {}
+    for key, is_configured in configured.items():
+        row = by_source.get(_CONNECTOR_SOURCE_TYPES.get(key, ""))
+        chunk_count = row.chunks if row else 0
+
+        if not is_configured:
+            # No credentials stored — genuinely not set up, not "partial".
+            status = "disconnected"
+        elif syncing:
+            status = "syncing"
+        elif chunk_count > 0:
+            status = "connected"
+        elif failed:
+            status = "error"
+        elif key == "drive":
+            # Can't confirm from chunk counts (see _CONNECTOR_SOURCE_TYPES).
+            status = "connected"
+        else:
+            # Credentials saved but the run produced nothing — bad key, empty
+            # form, or revoked access. This is the one honest use of "partial".
+            status = "partial"
+
+        connectors[key] = {
+            "configured": is_configured,
+            "status": status,
+            "chunk_count": chunk_count,
+            "last_synced": row.last_synced.isoformat() if row and row.last_synced else None,
+        }
+
+    return {
+        "connectors": connectors,
+        "last_job": {
+            "id": str(latest.id),
+            "status": latest.status,
+            "error": latest.error,
+            "chunks": latest.chunks,
+        } if latest else None,
+    }
 
 
 # ---------------------------------------------------------------------------

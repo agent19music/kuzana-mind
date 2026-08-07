@@ -508,6 +508,22 @@ def chunk_document(doc: dict) -> list[dict]:
 # Main ingestion entry point
 # ---------------------------------------------------------------------------
 
+def create_ingest_job(org_id: str, trigger: str = "manual") -> str:
+    """Open a "running" ingest_jobs row and return its id.
+
+    Split out of run_ingestion so POST /ingest can create the job *before*
+    handing off to a background task, and return the id to the caller. Without
+    that, a client has no handle to poll and can only guess when a sync
+    finished — which is why the connections page used to need a hard refresh.
+    """
+    from database import IngestJob
+    with get_session() as session:
+        job = IngestJob(org_id=org_id, status="running", trigger=trigger)
+        session.add(job)
+        session.commit()
+        return str(job.id)
+
+
 async def run_ingestion(
     org_id: str | None = None,
     org_name: str | None = None,
@@ -519,6 +535,7 @@ async def run_ingestion(
     tally_api_key: str | None = None,
     tally_form_ids: list[str] | None = None,
     trigger: str = "manual",
+    job_id: str | None = None,
 ) -> dict:
     # org_id is mandatory: chunks are tenant data and must never be written
     # unscoped. A missing org would otherwise create null-org rows visible to all.
@@ -571,12 +588,11 @@ async def run_ingestion(
         eff_tally_key = tally_api_key or org.tally_api_key
         eff_tally_forms = tally_form_ids if tally_form_ids is not None else org.tally_form_ids
 
-    # Open a job row so status is observable while the run is in flight.
-    with get_session() as session:
-        job = IngestJob(org_id=org_id, status="running", trigger=trigger)
-        session.add(job)
-        session.commit()
-        job_id = job.id
+    # Open a job row so status is observable while the run is in flight. The
+    # caller may have already created one (see create_ingest_job) so it could
+    # hand a job id back to the client before this background task starts.
+    if job_id is None:
+        job_id = create_ingest_job(org_id, trigger)
 
     def _finish(status: str, *, documents: int = 0, chunks: int = 0, error: str | None = None):
         from sqlalchemy.sql import func as _func
