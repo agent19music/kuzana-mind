@@ -15,6 +15,7 @@ type ChatResponse = {
   source_title?: string;
   source_doc_id?: string;
   source_type?: "google_docs" | "notion" | "tally" | "upload" | "mock";
+  source_excerpt?: string;
   staff_name?: string;
   staff_email?: string;
   staff_domain?: string;
@@ -454,6 +455,7 @@ export default function ChatClient() {
                           sourceTitle={msg.data.source_title}
                           sourceDocId={msg.data.source_doc_id}
                           sourceType={msg.data.source_type}
+                          sourceExcerpt={msg.data.source_excerpt}
                           similarityScore={msg.data.similarity_score}
                         />
                       ) : (

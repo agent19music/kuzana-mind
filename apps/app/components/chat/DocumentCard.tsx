@@ -1,5 +1,7 @@
 "use client";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import PreviewPanel from "./PreviewPanel";
 
 export type SourceType = "google_docs" | "notion" | "tally" | "upload" | "mock";
 
@@ -8,6 +10,7 @@ interface DocumentCardProps {
   sourceTitle?: string;
   sourceDocId?: string;
   sourceType?: SourceType;
+  sourceExcerpt?: string;
   similarityScore?: number;
 }
 
@@ -19,19 +22,24 @@ const SOURCE_LABELS: Record<string, string> = {
   mock: "Internal",
 };
 
-// Sources with a real external URL we can link to directly. Uploads have no
-// external URL at all — see docs/specs/file-preview-spec.md for the in-app
-// preview that replaces this link for them. Tally submissions have no
-// per-response URL either, so — like mock — they render no link.
+// Sources with a real external URL we can link to directly.
 const LINKABLE_SOURCE_TYPES: SourceType[] = ["google_docs", "notion"];
+
+// Sources with an in-app preview (reassembled from stored chunk text — see
+// docs/specs/file-preview-spec.md). Tally submissions have no per-response
+// URL and no separate "file" to preview, so — like mock — they render nothing.
+const PREVIEWABLE_SOURCE_TYPES: SourceType[] = ["upload"];
 
 export default function DocumentCard({
   answer,
   sourceTitle,
   sourceDocId,
   sourceType,
+  sourceExcerpt,
   similarityScore,
 }: DocumentCardProps) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   return (
     <div
       style={{
@@ -204,6 +212,48 @@ export default function DocumentCard({
             </svg>
           </a>
         </div>
+      )}
+
+      {/* In-app preview trigger — for sources with no external URL to link to */}
+      {sourceDocId && sourceType && PREVIEWABLE_SOURCE_TYPES.includes(sourceType) && (
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-4)" }}>
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            style={{
+              fontSize: 13,
+              fontWeight: 400,
+              color: "var(--brand-olive)",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            Open in source
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2.5 9.5L9.5 2.5M9.5 2.5H5M9.5 2.5V7"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {previewOpen && sourceDocId && sourceType && (
+        <PreviewPanel
+          docId={sourceDocId}
+          sourceType={sourceType}
+          excerpt={sourceExcerpt}
+          onClose={() => setPreviewOpen(false)}
+        />
       )}
     </div>
   );

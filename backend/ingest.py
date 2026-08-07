@@ -470,6 +470,8 @@ def chunk_document(doc: dict) -> list[dict]:
     sections = header_splitter.split_text(doc["content"])
 
     out: list[dict] = []
+    chunk_index = 0  # document-wide order, unlike section_part (resets per section) —
+    # lets a preview reassemble a document's full text in original reading order.
     for section in sections:
         breadcrumb = _header_breadcrumb(section.metadata)
         pieces = recursive_splitter.split_text(section.page_content)
@@ -488,6 +490,8 @@ def chunk_document(doc: dict) -> list[dict]:
             metadata = dict(section.metadata)
             metadata["breadcrumb"] = breadcrumb
             metadata["section_part"] = i
+            metadata["chunk_index"] = chunk_index
+            chunk_index += 1
 
             out.append({
                 "doc_id": doc["doc_id"],

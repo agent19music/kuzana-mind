@@ -58,7 +58,8 @@ class ChatResponse(BaseModel):
     conversation_id: str            # thread this turn belongs to
     source_title: str | None = None
     source_doc_id: str | None = None
-    source_type: str | None = None  # "google_docs" | "notion" | "tally" | "mock"
+    source_type: str | None = None  # "google_docs" | "notion" | "tally" | "upload" | "mock"
+    source_excerpt: str | None = None  # raw chunk text, for preview-panel highlighting
     staff_name: str | None = None
     staff_email: str | None = None
     staff_domain: str | None = None
@@ -70,7 +71,7 @@ class ChatResponse(BaseModel):
 # Assistant source/staff metadata persisted per message — everything the answer
 # dict carries except the answer text itself, so a reopened thread rebuilds cards.
 _META_KEYS = (
-    "type", "source_title", "source_doc_id", "source_type",
+    "type", "source_title", "source_doc_id", "source_type", "source_excerpt",
     "staff_name", "staff_email", "staff_domain", "staff_title",
     "staff_department", "similarity_score",
 )
@@ -141,6 +142,43 @@ async def list_documents(auth_ctx: AuthContext = Depends(require_read_auth)):
             }
             for r in rows
         ]
+    }
+
+
+@app.get("/documents/preview")
+async def preview_document(
+    doc_id: str,
+    source_type: str = "upload",
+    auth_ctx: AuthContext = Depends(require_read_auth),
+):
+    """
+    Reassemble an ingested document's chunk text, in original reading order,
+    for in-app preview. doc_id is the raw provider id (e.g. the uploaded
+    filename) exactly as returned in ChatResponse.source_doc_id. Query param
+    rather than a path segment, so we don't have to worry about escaping
+    slashes from folder-upload relative-path filenames.
+    """
+    from ingest import namespaced_doc_id
+
+    org_id = auth_ctx.clerk_org_id
+    full_doc_id = namespaced_doc_id(source_type, org_id, doc_id)
+
+    with session_for_org(org_id) as db:
+        rows = (
+            db.query(DocumentChunk.chunk_text, DocumentChunk.metadata_, DocumentChunk.title)
+            .filter(DocumentChunk.org_id == org_id, DocumentChunk.doc_id == full_doc_id)
+            .all()
+        )
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    ordered = sorted(rows, key=lambda r: (r.metadata_ or {}).get("chunk_index", 0))
+
+    return {
+        "mode": "text",
+        "title": ordered[0].title,
+        "content": "\n\n".join(r.chunk_text for r in ordered),
     }
 
 
