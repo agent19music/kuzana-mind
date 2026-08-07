@@ -26,16 +26,19 @@ export default async function ConnectionsPage() {
 
   let stats: OrgStats | null = null;
   let jobs: Job[] = [];
+  let notifiedIntegrations: string[] = [];
   try {
     const token = await getToken();
     if (token) {
       const headers = { Authorization: `Bearer ${token}` };
-      const [statsRes, statusRes] = await Promise.all([
+      const [statsRes, statusRes, notifyRes] = await Promise.all([
         fetch(`${BACKEND_URL}/stats`, { headers, cache: "no-store" }),
         fetch(`${BACKEND_URL}/ingest/status`, { headers, cache: "no-store" }),
+        fetch(`${BACKEND_URL}/integrations/notify`, { headers, cache: "no-store" }),
       ]);
       if (statsRes.ok) stats = await statsRes.json();
       if (statusRes.ok) jobs = (await statusRes.json()).jobs ?? [];
+      if (notifyRes.ok) notifiedIntegrations = (await notifyRes.json()).integrations ?? [];
     }
   } catch {
     /* backend unreachable — client renders with empty state */
@@ -53,7 +56,7 @@ export default async function ConnectionsPage() {
               Manage knowledge sources. Connected services are automatically re-indexed on sync.
             </p>
           </div>
-          <ConnectionsClient stats={stats} jobs={jobs} />
+          <ConnectionsClient stats={stats} jobs={jobs} notifiedIntegrations={notifiedIntegrations} />
         </div>
       </main>
     </DashboardShell>

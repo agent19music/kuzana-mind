@@ -209,6 +209,32 @@ class Waitlist(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class IntegrationInterest(Base):
+    """One row per org per not-yet-shipped integration whose "Notify me" was
+    clicked on the connections page — this *is* the mailing list. Once
+    Slack/Confluence ship, querying this table by `integration` is how we know
+    who to email. Deliberately NOT under RLS: same rationale as IngestJob, no
+    tenant document content, every read is app-side filtered by org_id.
+    """
+    __tablename__ = "integration_interest"
+
+    id           = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id       = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    integration  = Column(String, nullable=False)   # "slack" | "confluence"
+    requested_by = Column(String, nullable=False)    # clerk_user_id
+    email        = Column(String, nullable=True)     # best-effort contact for the eventual notify send
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "integration", name="uq_integration_interest_org_integration"),
+    )
+
+
 def init_db():
     # Schema is managed by Alembic. This only ensures the vector extension exists
     # for local dev runs where alembic upgrade head hasn't been called yet.

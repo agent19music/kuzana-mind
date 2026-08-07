@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -111,6 +112,105 @@ function SyncButton({ body, label = "Sync now" }: { body?: Record<string, unknow
   );
 }
 
+const connectorInputStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#444",
+  background: "#fff",
+  border: "1px solid #E2E2E2",
+  borderRadius: 6,
+  padding: "5px 10px",
+  fontWeight: 400,
+  outline: "none",
+};
+
+function TallySetup({ configured }: { configured: boolean }) {
+  const [apiKey, setApiKey] = useState("");
+  const [formIds, setFormIds] = useState("");
+
+  const ids = formIds
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const ready = apiKey.trim().length > 0 && ids.length > 0;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+      <input
+        type="password"
+        value={apiKey}
+        onChange={(e) => setApiKey(e.target.value)}
+        placeholder={configured ? "New API key" : "Tally API key"}
+        style={{ ...connectorInputStyle, width: 140 }}
+      />
+      <input
+        value={formIds}
+        onChange={(e) => setFormIds(e.target.value)}
+        placeholder="Form ids, comma separated"
+        style={{ ...connectorInputStyle, width: 180 }}
+      />
+      {ready ? (
+        <SyncButton body={{ tally_api_key: apiKey.trim(), tally_form_ids: ids }} label="Save & sync" />
+      ) : (
+        <span style={{ fontSize: 12, color: "#bbb" }}>
+          {configured ? "Update key + form ids" : "Paste key + form ids"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Records real interest in a not-yet-shipped connector via /api/admin/notify
+// (backend: integration_interest table) so there's an actual list to email
+// once it ships, instead of a click that only flips local React state.
+function NotifyButton({ integration, initiallyNotified }: { integration: string; initiallyNotified: boolean }) {
+  const { user } = useUser();
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">(
+    initiallyNotified ? "done" : "idle"
+  );
+
+  async function notify() {
+    setState("loading");
+    try {
+      const res = await fetch("/api/admin/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integration,
+          email: user?.primaryEmailAddress?.emailAddress,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setState("done");
+    } catch (err) {
+      console.error("Notify signup failed:", err);
+      setState("error");
+      setTimeout(() => setState("idle"), 4000);
+    }
+  }
+
+  const label =
+    state === "loading" ? "Saving…" : state === "done" ? "✓ Noted" : state === "error" ? "Retry" : "Notify me";
+
+  return (
+    <button
+      onClick={notify}
+      disabled={state === "loading" || state === "done"}
+      style={{
+        fontSize: 12,
+        color: state === "done" ? "#22c55e" : state === "error" ? "#b91c1c" : "#7c3aed",
+        background: "none",
+        border: `1px solid ${state === "done" ? "#86efac" : state === "error" ? "#fecaca" : "#ddd6fe"}`,
+        borderRadius: 6,
+        padding: "5px 12px",
+        cursor: state === "loading" || state === "done" ? "not-allowed" : "pointer",
+        fontWeight: 400,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 function DriveSetup() {
   const [folderId, setFolderId] = useState("");
   return (
@@ -140,9 +240,15 @@ function DriveSetup() {
   );
 }
 
-export default function ConnectionsClient({ stats, jobs }: { stats: OrgStats | null; jobs: Job[] }) {
-  const [notified, setNotified] = useState<Set<string>>(new Set());
-
+export default function ConnectionsClient({
+  stats,
+  jobs,
+  notifiedIntegrations,
+}: {
+  stats: OrgStats | null;
+  jobs: Job[];
+  notifiedIntegrations: string[];
+}) {
   const sources = new Set(stats?.source_types ?? []);
   const hasNotion = sources.has("notion");
   const hasGdocs = sources.has("google_docs");
@@ -338,24 +444,14 @@ export default function ConnectionsClient({ stats, jobs }: { stats: OrgStats | n
               {/* Actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 {conn.id === "drive" && <DriveSetup />}
-                {conn.syncable && <SyncButton />}
+                {conn.id === "tally" && <TallySetup configured={hasTally} />}
+                {conn.syncable && conn.id !== "tally" && <SyncButton />}
                 {conn.status === "soon" ? (
-                  <button
-                    onClick={() => setNotified((n) => { const set = new Set(n); set.add(conn.id); return set; })}
-                    style={{
-                      fontSize: 12,
-                      color: notified.has(conn.id) ? "#22c55e" : "#7c3aed",
-                      background: "none",
-                      border: `1px solid ${notified.has(conn.id) ? "#86efac" : "#ddd6fe"}`,
-                      borderRadius: 6,
-                      padding: "5px 12px",
-                      cursor: "pointer",
-                      fontWeight: 400,
-                    }}
-                  >
-                    {notified.has(conn.id) ? "✓ Noted" : conn.actionLabel}
-                  </button>
-                ) : conn.id !== "drive" ? (
+                  <NotifyButton
+                    integration={conn.id}
+                    initiallyNotified={notifiedIntegrations.includes(conn.id)}
+                  />
+                ) : conn.id !== "drive" && conn.id !== "tally" ? (
                   <a
                     href={conn.actionHref ?? "#"}
                     style={{

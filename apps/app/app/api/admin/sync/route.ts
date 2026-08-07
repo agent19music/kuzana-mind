@@ -10,13 +10,22 @@ export async function POST(request: NextRequest) {
   if (!orgId) return NextResponse.json({ error: "No organisation" }, { status: 401 });
   if (orgRole !== "org:admin") return NextResponse.json({ error: "Admin only" }, { status: 403 });
 
-  // Optional: an admin can paste/update a Drive folder id to sync. Omitted for a
-  // plain "re-index my configured sources" sync (backend falls back to stored config).
+  // Optional: an admin can paste/update a Drive folder id, or a Tally API key +
+  // form ids, to sync. Omitted for a plain "re-index my configured sources"
+  // sync (backend falls back to stored config).
   let driveFolderId: string | undefined;
+  let tallyApiKey: string | undefined;
+  let tallyFormIds: string[] | undefined;
   try {
     const body = await request.json();
     if (typeof body?.drive_folder_id === "string" && body.drive_folder_id.trim()) {
       driveFolderId = body.drive_folder_id.trim();
+    }
+    if (typeof body?.tally_api_key === "string" && body.tally_api_key.trim()) {
+      tallyApiKey = body.tally_api_key.trim();
+    }
+    if (Array.isArray(body?.tally_form_ids)) {
+      tallyFormIds = body.tally_form_ids.filter((id: unknown) => typeof id === "string" && id.trim());
     }
   } catch {
     /* no body — plain re-index */
@@ -34,6 +43,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         org_id: orgId,
         ...(driveFolderId ? { drive_folder_id: driveFolderId } : {}),
+        ...(tallyApiKey ? { tally_api_key: tallyApiKey } : {}),
+        ...(tallyFormIds ? { tally_form_ids: tallyFormIds } : {}),
       }),
     });
 
