@@ -153,18 +153,41 @@ async def preview_document(
     auth_ctx: AuthContext = Depends(require_read_auth),
 ):
     """
-    Reassemble an ingested document's chunk text, in original reading order,
-    for in-app preview. doc_id is the raw provider id (e.g. the uploaded
-    filename) exactly as returned in ChatResponse.source_doc_id. Query param
-    rather than a path segment, so we don't have to worry about escaping
-    slashes from folder-upload relative-path filenames.
+    doc_id is the raw provider id (e.g. the uploaded filename) exactly as
+    returned in ChatResponse.source_doc_id. Query param rather than a path
+    segment, so we don't have to worry about escaping slashes from
+    folder-upload relative-path filenames.
+
+    Native PDF mode requires both a stored original (storage_path — only
+    present for uploads made after the GCS storage layer shipped) and GCS
+    actually being configured in this environment; everything else, and any
+    upload made before that, falls back to reassembled text.
     """
+    from database import DocumentFile
     from ingest import namespaced_doc_id
 
     org_id = auth_ctx.clerk_org_id
     full_doc_id = namespaced_doc_id(source_type, org_id, doc_id)
 
     with session_for_org(org_id) as db:
+        file_row = (
+            db.query(DocumentFile)
+            .filter(DocumentFile.org_id == org_id, DocumentFile.doc_id == full_doc_id)
+            .first()
+        )
+
+        if (
+            file_row and file_row.storage_path
+            and file_row.mime_type == "application/pdf"
+            and storage.enabled()
+        ):
+            return {
+                "mode": "pdf",
+                "title": file_row.title,
+                "signed_url": storage.signed_url(file_row.storage_path),
+                "page_count": file_row.page_count,
+            }
+
         rows = (
             db.query(DocumentChunk.chunk_text, DocumentChunk.metadata_, DocumentChunk.title)
             .filter(DocumentChunk.org_id == org_id, DocumentChunk.doc_id == full_doc_id)

@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
+import PdfPreview from "./PdfPreview";
 
-type PreviewData = { mode: "text"; title: string | null; content: string };
+type PreviewData =
+  | { mode: "text"; title: string | null; content: string }
+  | { mode: "pdf"; title: string | null; signed_url: string; page_count: number };
 
 type Props = {
   docId: string;
@@ -50,7 +53,7 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
     markRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [data]);
 
-  const parts = data ? splitOnExcerpt(data.content, excerpt) : null;
+  const parts = data?.mode === "text" ? splitOnExcerpt(data.content, excerpt) : null;
 
   return (
     <div
@@ -156,6 +159,9 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
               )}
               {parts.after}
             </p>
+          )}
+          {data?.mode === "pdf" && (
+            <PdfPreview signedUrl={data.signed_url} pageCount={data.page_count} excerpt={excerpt} />
           )}
         </div>
       </div>
