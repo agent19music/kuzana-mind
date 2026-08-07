@@ -16,6 +16,12 @@ type Job = {
   started_at: string | null;
   finished_at: string | null;
 };
+export type ConnectorState = {
+  configured: boolean;
+  status: "connected" | "partial" | "disconnected" | "syncing" | "error";
+  chunk_count: number;
+  last_synced: string | null;
+};
 
 export default async function ConnectionsPage() {
   const { userId, orgId, orgRole, getToken } = await auth();
@@ -27,18 +33,21 @@ export default async function ConnectionsPage() {
   let stats: OrgStats | null = null;
   let jobs: Job[] = [];
   let notifiedIntegrations: string[] = [];
+  let connectors: Record<string, ConnectorState> = {};
   try {
     const token = await getToken();
     if (token) {
       const headers = { Authorization: `Bearer ${token}` };
-      const [statsRes, statusRes, notifyRes] = await Promise.all([
+      const [statsRes, statusRes, notifyRes, connRes] = await Promise.all([
         fetch(`${BACKEND_URL}/stats`, { headers, cache: "no-store" }),
         fetch(`${BACKEND_URL}/ingest/status`, { headers, cache: "no-store" }),
         fetch(`${BACKEND_URL}/integrations/notify`, { headers, cache: "no-store" }),
+        fetch(`${BACKEND_URL}/connections`, { headers, cache: "no-store" }),
       ]);
       if (statsRes.ok) stats = await statsRes.json();
       if (statusRes.ok) jobs = (await statusRes.json()).jobs ?? [];
       if (notifyRes.ok) notifiedIntegrations = (await notifyRes.json()).integrations ?? [];
+      if (connRes.ok) connectors = (await connRes.json()).connectors ?? {};
     }
   } catch {
     /* backend unreachable — client renders with empty state */
@@ -56,7 +65,12 @@ export default async function ConnectionsPage() {
               Manage knowledge sources. Connected services are automatically re-indexed on sync.
             </p>
           </div>
-          <ConnectionsClient stats={stats} jobs={jobs} notifiedIntegrations={notifiedIntegrations} />
+          <ConnectionsClient
+            stats={stats}
+            jobs={jobs}
+            notifiedIntegrations={notifiedIntegrations}
+            connectors={connectors}
+          />
         </div>
       </main>
     </DashboardShell>

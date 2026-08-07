@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { UploadSimple, Plus, FolderSimplePlus } from "@phosphor-icons/react";
+import { UploadSimple, Plus, FolderSimplePlus, CaretRight, CaretDown } from "@phosphor-icons/react";
 import DashboardShell from "../../../components/DashboardShell";
 import UploadQueue, { type QueueItem } from "./UploadQueue";
 
@@ -22,7 +22,25 @@ type DocFile = {
   source: string;
 };
 
+// A row is either one document or a collapsed Tally form standing in for many.
+// The backend decides which (see GROUP_THRESHOLD) so a form with thousands of
+// responses never reaches the browser as thousands of rows.
+type GroupRow = {
+  kind: "group";
+  key: string;
+  label: string;
+  docCount: number;
+  chunks: number;
+  uploaded: string;
+  source: string;
+};
+type DocRow = DocFile & { kind: "document" };
+type Row = DocRow | GroupRow;
+
+// `kind` is a literal on both variants (the backend always sets it) so the
+// union discriminates without a cast.
 type BackendDocument = {
+  kind: "document";
   doc_id: string;
   title: string | null;
   source_type: string | null;
@@ -30,10 +48,23 @@ type BackendDocument = {
   last_indexed: string | null;
 };
 
+type BackendGroup = {
+  kind: "group";
+  group_key: string;
+  label: string;
+  source_type: string | null;
+  doc_count: number;
+  chunks: number;
+  last_indexed: string | null;
+};
+
+type BackendEntry = BackendDocument | BackendGroup;
+
 const SOURCE_LABELS: Record<string, string> = {
   upload: "Upload",
   notion: "Notion",
   google_docs: "Google Docs",
+  tally: "Tally",
   mock: "Sample",
 };
 
@@ -61,8 +92,9 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function mapDocuments(docs: BackendDocument[]): DocFile[] {
+function mapDocuments(docs: BackendDocument[]): DocRow[] {
   return docs.map(d => ({
+    kind: "document" as const,
     id: d.doc_id,
     name: d.title || d.doc_id,
     type: fileTypeFor(d),
@@ -72,8 +104,115 @@ function mapDocuments(docs: BackendDocument[]): DocFile[] {
   }));
 }
 
+function mapEntries(entries: BackendEntry[]): Row[] {
+  return entries.map(e =>
+    e.kind === "group"
+      ? {
+          kind: "group" as const,
+          key: e.group_key,
+          label: e.label,
+          docCount: e.doc_count,
+          chunks: e.chunks,
+          uploaded: formatDate(e.last_indexed),
+          source: SOURCE_LABELS[e.source_type ?? ""] ?? e.source_type ?? "Unknown",
+        }
+      : mapDocuments([e])[0]
+  );
+}
+
+const GROUP_PAGE_SIZE = 50;
+const GROUP_MAX_HEIGHT = 320;
+
+// The responses inside one collapsed form. Loaded on first expand and paged
+// from there, so opening a 10k-response form costs one 50-row request.
+function GroupChildren({ groupKey }: { groupKey: string }) {
+  const [rows, setRows] = useState<DocRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadPage = useCallback(async (offset: number) => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/files?group=${encodeURIComponent(groupKey)}&limit=${GROUP_PAGE_SIZE}&offset=${offset}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error("Could not load responses");
+      const data = await res.json();
+      setTotal(data.total ?? 0);
+      setRows(prev => (offset === 0 ? mapDocuments(data.documents ?? []) : [...prev, ...mapDocuments(data.documents ?? [])]));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load responses");
+    } finally {
+      setLoading(false);
+    }
+  }, [groupKey]);
+
+  useEffect(() => {
+    loadPage(0);
+  }, [loadPage]);
+
+  return (
+    <div style={{ background: "#FCFCFC", borderBottom: "1px solid #F0F0F0" }}>
+      <div style={{ maxHeight: GROUP_MAX_HEIGHT, overflowY: "auto" }}>
+        {rows.map(r => (
+          <div
+            key={r.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 72px 120px 100px",
+              padding: "9px 20px 9px 44px",
+              borderBottom: "1px solid #F6F6F6",
+              alignItems: "center",
+            }}
+          >
+            <p style={{ fontSize: 13, color: "#444", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {r.name}
+            </p>
+            <span style={{ fontSize: 11, color: "#bbb" }}>{r.chunks} chunks</span>
+            <span style={{ fontSize: 12.5, color: "#999" }}>{r.uploaded}</span>
+            <span />
+          </div>
+        ))}
+
+        {error && (
+          <p style={{ fontSize: 12.5, color: "#b91c1c", margin: 0, padding: "12px 20px 12px 44px" }}>{error}</p>
+        )}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px 12px 44px" }}>
+        <span style={{ fontSize: 12, color: "#aaa" }}>
+          Showing {rows.length.toLocaleString()} of {total.toLocaleString()}
+        </span>
+        {rows.length < total && (
+          <button
+            onClick={() => loadPage(rows.length)}
+            disabled={loading}
+            className="btn-pill"
+            style={{
+              fontSize: 12,
+              color: loading ? "#bbb" : "#444",
+              background: "#fff",
+              border: "1px solid #E2E2E2",
+              borderRadius: 6,
+              padding: "4px 12px",
+              cursor: loading ? "not-allowed" : "pointer",
+              fontWeight: 400,
+            }}
+          >
+            {loading ? "Loading…" : `Load ${Math.min(GROUP_PAGE_SIZE, total - rows.length)} more`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function FilesPage() {
-  const [files, setFiles] = useState<DocFile[]>([]);
+  const [files, setFiles] = useState<Row[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -94,7 +233,7 @@ export default function FilesPage() {
         setFiles([]);
         return;
       }
-      setFiles(mapDocuments(data.documents ?? []));
+      setFiles(mapEntries(data.entries ?? []));
     } catch {
       setFiles([]);
     } finally {
@@ -113,7 +252,19 @@ export default function FilesPage() {
   }, []);
 
   const totalChunks = files.reduce((n, f) => n + f.chunks, 0);
+  // A group row stands for many documents, so count its members rather than the
+  // row itself — otherwise a 1,200-response form reads as a single document.
+  const totalDocuments = files.reduce((n, f) => n + (f.kind === "group" ? f.docCount : 1), 0);
   const activeCount = queue.filter((q) => q.status === "queued" || q.status === "uploading").length;
+
+  const toggleGroup = useCallback((key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const updateItem = useCallback((id: string, patch: Partial<QueueItem>) => {
     setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)));
@@ -244,7 +395,7 @@ export default function FilesPage() {
               <p style={{ fontSize: 14, color: "#888", marginTop: 8 }}>
                 {loading
                   ? "Loading…"
-                  : `${files.length} documents · ${totalChunks.toLocaleString()} chunks indexed`}
+                  : `${totalDocuments.toLocaleString()} documents · ${totalChunks.toLocaleString()} chunks indexed`}
                 {activeCount > 0 && ` · ${activeCount} uploading`}
               </p>
             </div>
@@ -294,7 +445,7 @@ export default function FilesPage() {
                   <UploadSimple size={22} />
                 </div>
                 <div>
-                  <p style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", margin: "0 0 4px" }}>
+                  <p style={{ fontSize: 14, fontWeight: 400, color: "#1a1a1a", margin: "0 0 4px" }}>
                     Drop files or a folder here, or pick them below
                   </p>
                   <p style={{ fontSize: 12, color: "#888", margin: 0 }}>
@@ -311,7 +462,7 @@ export default function FilesPage() {
                     className="btn-pill"
                     style={{
                       fontSize: 13,
-                      fontWeight: 500,
+                      fontWeight: 400,
                       color: "#1a1a1a",
                       background: "#fff",
                       border: "1px solid #e5e5e5",
@@ -334,7 +485,7 @@ export default function FilesPage() {
                     className="btn-pill"
                     style={{
                       fontSize: 13,
-                      fontWeight: 500,
+                      fontWeight: 400,
                       color: "#1a1a1a",
                       background: "#fff",
                       border: "1px solid #e5e5e5",
@@ -390,6 +541,71 @@ export default function FilesPage() {
               </div>
             ) : (
               files.map((f, i) => {
+                const isLast = i === files.length - 1;
+
+                if (f.kind === "group") {
+                  const isOpen = expanded.has(f.key);
+                  return (
+                    <div key={f.key}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isOpen}
+                        onClick={() => toggleGroup(f.key)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleGroup(f.key);
+                          }
+                        }}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 72px 120px 100px",
+                          padding: "12px 20px",
+                          borderBottom: isLast && !isOpen ? "none" : "1px solid #F6F6F6",
+                          alignItems: "center",
+                          cursor: "pointer",
+                          transition: "background 100ms",
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#FAFAFA")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "")}
+                      >
+                        <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ color: "#bbb", display: "inline-flex", flexShrink: 0 }}>
+                            {isOpen ? <CaretDown size={13} /> : <CaretRight size={13} />}
+                          </span>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: 13.5, fontWeight: 400, color: "#222", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {f.label}
+                            </p>
+                            <p style={{ fontSize: 11, color: "#bbb", margin: "2px 0 0" }}>
+                              {f.docCount.toLocaleString()} responses · {f.chunks.toLocaleString()} chunks
+                            </p>
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 400,
+                            color: "#555",
+                            background: "#F4F4F4",
+                            borderRadius: 4,
+                            padding: "3px 7px",
+                            display: "inline-block",
+                            letterSpacing: "-0.01em",
+                            width: "fit-content",
+                          }}
+                        >
+                          FORM
+                        </span>
+                        <span style={{ fontSize: 12.5, color: "#999" }}>{f.uploaded}</span>
+                        <span style={{ fontSize: 12.5, color: "#bbb" }}>{f.source}</span>
+                      </div>
+                      {isOpen && <GroupChildren groupKey={f.key} />}
+                    </div>
+                  );
+                }
+
                 const tc = TYPE_COLORS[f.type] ?? { bg: "#F4F4F4", text: "#555" };
                 return (
                   <div
@@ -398,7 +614,7 @@ export default function FilesPage() {
                       display: "grid",
                       gridTemplateColumns: "1fr 72px 120px 100px",
                       padding: "12px 20px",
-                      borderBottom: i < files.length - 1 ? "1px solid #F6F6F6" : "none",
+                      borderBottom: isLast ? "none" : "1px solid #F6F6F6",
                       alignItems: "center",
                       transition: "background 100ms",
                     }}

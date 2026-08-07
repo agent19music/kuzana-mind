@@ -6,16 +6,18 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
     create_engine,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.sql import func
 
@@ -207,6 +209,140 @@ class Waitlist(Base):
     company    = Column(String, nullable=False)
     role       = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class FormDefinition(Base):
+    """One synced form. Under RLS like documents — read/write via session_for_org."""
+    __tablename__ = "form_definitions"
+
+    id             = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id         = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    provider       = Column(String, nullable=False, default="tally")
+    form_id        = Column(String, nullable=False)      # provider's form id, e.g. "J9rZAJ"
+    name           = Column(String)
+    response_count = Column(Integer, default=0)
+    synced_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("org_id", "form_id", name="uq_form_definitions_org_form"),)
+
+
+class FormQuestion(Base):
+    """A question on a form. `kind` is the normalised bucket aggregates key off;
+    `raw_type` keeps the provider's own string so a mis-normalised question is
+    diagnosable without re-fetching."""
+    __tablename__ = "form_questions"
+
+    id          = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id      = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    form_id     = Column(String, nullable=False)
+    question_id = Column(String, nullable=False)
+    label       = Column(Text)
+    kind        = Column(String, nullable=False, default="other")
+    raw_type    = Column(String)
+    position    = Column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "form_id", "question_id", name="uq_form_questions_org_form_question"),
+        Index("ix_form_questions_org_form", "org_id", "form_id"),
+    )
+
+
+class FormResponse(Base):
+    """One submission. `doc_id` links to the `documents` chunk the same
+    submission also produced, so the structured row and its RAG text can be
+    reconciled either way."""
+    __tablename__ = "form_responses"
+
+    id            = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id        = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    form_id       = Column(String, nullable=False)
+    external_id   = Column(String, nullable=False)       # provider's submission id
+    respondent_id = Column(String)
+    submitted_at  = Column(DateTime(timezone=True))
+    is_completed  = Column(Boolean)
+    doc_id        = Column(String)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "form_id", "external_id", name="uq_form_responses_org_form_external"),
+        Index("ix_form_responses_org_form_submitted", "org_id", "form_id", "submitted_at"),
+    )
+
+
+class FormAnswer(Base):
+    """One answer to one question. The typed columns are projections of
+    `raw_value`, which always holds the original payload so an imperfectly
+    normalised question shape loses nothing.
+
+    Only free-text (short_text/long_text) answers carry an embedding — choice and
+    numeric answers are aggregated with GROUP BY. `text_hash` lets a re-sync
+    reuse an embedding when the text is unchanged.
+    """
+    __tablename__ = "form_answers"
+
+    id             = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id         = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    response_id    = Column(UUID, ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    form_id        = Column(String, nullable=False)
+    question_id    = Column(String, nullable=False)
+    kind           = Column(String, nullable=False, default="other")
+    answer_text    = Column(Text)
+    answer_numeric = Column(Numeric)
+    answer_choices = Column(ARRAY(Text))
+    raw_value      = Column(JSONB)
+    embedding      = Column(Vector(768))
+    text_hash      = Column(String)
+    sentiment      = Column(String)   # "positive" | "negative" | "neutral"
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("response_id", "question_id", name="uq_form_answers_response_question"),
+        Index("ix_form_answers_org_form_question", "org_id", "form_id", "question_id"),
+    )
+
+
+class FormTheme(Base):
+    """A cluster of semantically similar free-text answers to one question,
+    with an LLM-written label and a cached sentiment split. `centroid` is the
+    mean of member embeddings and the target for incremental assignment."""
+    __tablename__ = "form_themes"
+
+    id                 = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id             = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    form_id            = Column(String, nullable=False)
+    question_id        = Column(String, nullable=False)
+    label              = Column(String)
+    summary            = Column(Text)
+    size               = Column(Integer, default=0)
+    centroid           = Column(Vector(768))
+    assign_cutoff      = Column(Float)     # cutoff this theme was clustered under
+    sentiment_positive = Column(Integer, default=0)
+    sentiment_negative = Column(Integer, default=0)
+    sentiment_neutral  = Column(Integer, default=0)
+    labelled_at        = Column(DateTime(timezone=True))
+    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at         = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_form_themes_org_form_question", "org_id", "form_id", "question_id"),
+    )
+
+
+class FormAnswerTheme(Base):
+    """Which theme an answer belongs to. The unique constraint on answer_id is
+    what makes re-assignment an upsert instead of a duplicate."""
+    __tablename__ = "form_answer_themes"
+
+    id        = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id    = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    answer_id = Column(UUID, ForeignKey("form_answers.id", ondelete="CASCADE"), nullable=False)
+    theme_id  = Column(UUID, ForeignKey("form_themes.id", ondelete="CASCADE"), nullable=False)
+    distance  = Column(Float)
+
+    __table_args__ = (
+        UniqueConstraint("answer_id", name="uq_form_answer_themes_answer"),
+        Index("ix_form_answer_themes_theme", "org_id", "theme_id"),
+    )
 
 
 class IntegrationInterest(Base):
