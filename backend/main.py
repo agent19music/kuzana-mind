@@ -802,3 +802,62 @@ async def join_waitlist(body: WaitlistRequest):
         print("Autosend skipped: missing AUTOSEND_API_KEY, AUTOSEND_TEMPLATE_ID, or AUTOSEND_FROM_EMAIL")
 
     return {"status": "success", "message": "You're on the waitlist!"}
+
+
+# ---------------------------------------------------------------------------
+# Integration interest ("Notify me" on not-yet-shipped connectors)
+# ---------------------------------------------------------------------------
+
+_NOTIFIABLE_INTEGRATIONS = {"slack", "confluence"}
+
+
+class IntegrationNotifyRequest(BaseModel):
+    integration: str
+    email: str | None = None
+
+
+@app.get("/integrations/notify")
+async def list_integration_interest(auth_ctx: AuthContext = Depends(require_read_auth)):
+    """Which not-yet-shipped integrations this org already registered interest
+    in — lets the connections page render "Noted" after a reload instead of
+    resetting every "Notify me" button to its initial state."""
+    from database import IntegrationInterest, get_session
+
+    with get_session() as db:
+        rows = (
+            db.query(IntegrationInterest)
+            .filter(IntegrationInterest.org_id == auth_ctx.clerk_org_id)
+            .all()
+        )
+        return {"integrations": [r.integration for r in rows]}
+
+
+@app.post("/integrations/notify", status_code=201)
+async def register_integration_interest(
+    body: IntegrationNotifyRequest,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Records that this org wants to hear when `integration` ships. This *is*
+    the mailing list — querying it by integration is how we'll know who to
+    email once Slack/Confluence go live. No outbound email here yet; there is
+    no changelog-ready template to send, unlike the waitlist's Autosend flow."""
+    from database import IntegrationInterest, get_session
+    from sqlalchemy.exc import IntegrityError
+
+    integration = body.integration.strip().lower()
+    if integration not in _NOTIFIABLE_INTEGRATIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown integration '{body.integration}'")
+
+    with get_session() as db:
+        try:
+            db.add(IntegrationInterest(
+                org_id=auth_ctx.clerk_org_id,
+                integration=integration,
+                requested_by=auth_ctx.clerk_user_id,
+                email=body.email.strip() if body.email else None,
+            ))
+            db.commit()
+        except IntegrityError:
+            db.rollback()  # already registered for this org — idempotent no-op
+
+    return {"status": "ok", "integration": integration}
