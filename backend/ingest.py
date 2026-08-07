@@ -939,7 +939,17 @@ async def run_ingestion(
 
         # Dual-write: the same submissions again as rows, for aggregates. Kept
         # after the chunk commit so a failure here cannot cost the RAG index.
-        await persist_form_submissions(org_id, docs)
+        form_stats = await persist_form_submissions(org_id, docs)
+
+        # Themes over the free text that just landed. Isolated because it calls
+        # the LLM: a labelling or quota failure must leave the ingest completed,
+        # since the chunks and structured rows are already durable.
+        if form_stats["responses"]:
+            try:
+                from themes import recompute_themes
+                await recompute_themes(org_id)
+            except Exception as exc:  # noqa: BLE001
+                print(f"Theme extraction failed (ingest still succeeded): {exc}")
     except Exception as exc:
         _finish("failed", error=str(exc))
         raise

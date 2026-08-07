@@ -10,6 +10,7 @@ Falls back to returning the raw chunk if generation fails (bad model name,
 quota, network) so chat never hard-fails on the synthesis step.
 """
 import asyncio
+import json
 import os
 
 from google import genai
@@ -131,3 +132,121 @@ async def condense_question(query: str, history: list[dict] | None) -> str:
     except Exception as exc:  # noqa: BLE001
         print(f"Follow-up condense failed, using raw query: {exc}")
         return query
+
+
+# ---------------------------------------------------------------------------
+# Form theme labelling + sentiment
+# ---------------------------------------------------------------------------
+
+_THEME_SYSTEM = (
+    "You name recurring themes in survey free-text answers. Given a question and "
+    "a sample of answers that were grouped together by meaning, reply with JSON "
+    'only: {"label": "...", "summary": "..."}. The label is a short noun phrase '
+    "naming what these answers have in common — 2 to 5 words, sentence case, no "
+    "trailing punctuation, specific rather than generic (\"flaky integration "
+    "tests\" not \"testing issues\"). The summary is one plain sentence describing "
+    "what respondents said. Use only what is in the answers; do not invent detail "
+    "and do not state counts or proportions."
+)
+
+_SENTIMENT_SYSTEM = (
+    "You classify the sentiment of survey free-text answers. For each numbered "
+    "answer, decide whether the respondent's tone toward the thing they are "
+    "describing is positive, negative, or neutral. Neutral covers factual or "
+    "purely descriptive answers with no evaluative charge. Reply with JSON only: "
+    'a list like [{"i": 1, "s": "negative"}, {"i": 2, "s": "neutral"}] '
+    "containing exactly one entry per numbered answer, using only those three "
+    "values."
+)
+
+
+def _json_only_config(system: str, max_tokens: int) -> types.GenerateContentConfig:
+    kwargs = dict(
+        system_instruction=system,
+        temperature=0.0,
+        max_output_tokens=max_tokens,
+        response_mime_type="application/json",
+    )
+    try:
+        kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    except Exception:  # noqa: BLE001
+        pass
+    return types.GenerateContentConfig(**kwargs)
+
+
+def _parse_json(raw: str):
+    """Tolerate a fenced or prose-wrapped response even with a JSON mime type."""
+    text_value = (raw or "").strip()
+    if text_value.startswith("```"):
+        text_value = text_value.strip("`")
+        text_value = text_value.split("\n", 1)[-1] if "\n" in text_value else text_value
+    start = min((i for i in (text_value.find("{"), text_value.find("[")) if i != -1), default=-1)
+    if start == -1:
+        raise ValueError("no JSON in response")
+    end = max(text_value.rfind("}"), text_value.rfind("]"))
+    return json.loads(text_value[start:end + 1])
+
+
+def _label_theme_sync(question: str, samples: list[str]) -> dict:
+    listed = "\n".join(f"- {s}" for s in samples)
+    prompt = f"Question: {question}\n\nAnswers grouped together:\n{listed}\n\nJSON:"
+    resp = _client.models.generate_content(
+        model=GEN_MODEL,
+        contents=prompt,
+        config=_json_only_config(_THEME_SYSTEM, 300),
+    )
+    data = _parse_json(resp.text)
+    return {
+        "label": str(data.get("label", "")).strip()[:120],
+        "summary": str(data.get("summary", "")).strip()[:600],
+    }
+
+
+async def label_theme(question: str, samples: list[str]) -> dict:
+    """Name a cluster of answers. Falls back to a truncated representative answer
+    so an unlabelled theme still reads as something rather than blank."""
+    if not samples:
+        return {"label": "", "summary": ""}
+    try:
+        result = await asyncio.to_thread(_label_theme_sync, question, samples)
+        if result["label"]:
+            return result
+    except Exception as exc:  # noqa: BLE001
+        print(f"  Theme labelling failed, using fallback: {exc}")
+    fallback = samples[0].strip().replace("\n", " ")
+    return {"label": fallback[:60] or "Unlabelled", "summary": ""}
+
+
+def _sentiment_sync(texts: list[str]) -> list[str]:
+    listed = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
+    resp = _client.models.generate_content(
+        model=GEN_MODEL,
+        contents=f"Answers:\n{listed}\n\nJSON:",
+        config=_json_only_config(_SENTIMENT_SYSTEM, 40 * len(texts) + 200),
+    )
+    data = _parse_json(resp.text)
+
+    allowed = {"positive", "negative", "neutral"}
+    out = ["neutral"] * len(texts)
+    for item in data if isinstance(data, list) else []:
+        try:
+            idx = int(item.get("i", 0)) - 1
+        except (TypeError, ValueError):
+            continue
+        value = str(item.get("s", "")).lower().strip()
+        if 0 <= idx < len(out) and value in allowed:
+            out[idx] = value
+    return out
+
+
+async def classify_sentiment(texts: list[str]) -> list[str]:
+    """Sentiment per answer, batched. Returns one label per input, defaulting to
+    "neutral" — a failed batch must not drop answers or shift the alignment
+    between inputs and results."""
+    if not texts:
+        return []
+    try:
+        return await asyncio.to_thread(_sentiment_sync, texts)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  Sentiment classification failed, defaulting to neutral: {exc}")
+        return ["neutral"] * len(texts)
