@@ -112,49 +112,280 @@ function SyncButton({ body, label = "Sync now" }: { body?: Record<string, unknow
   );
 }
 
-const connectorInputStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#444",
-  background: "#fff",
-  border: "1px solid #E2E2E2",
-  borderRadius: 6,
-  padding: "5px 10px",
-  fontWeight: 400,
-  outline: "none",
+// Per-connector setup, described as data so the modal stays generic. `list`
+// fields are typed comma-separated and sent as an array (what the backend's
+// ingest config expects for form/doc id collections).
+type Field = {
+  key: string;
+  label: string;
+  hint: string;
+  placeholder: string;
+  secret?: boolean;
+  list?: boolean;
+  optional?: boolean;
 };
 
-function TallySetup({ configured }: { configured: boolean }) {
-  const [apiKey, setApiKey] = useState("");
-  const [formIds, setFormIds] = useState("");
+const CONNECTOR_FIELDS: Record<string, { title: string; blurb: string; docs: string; fields: Field[] }> = {
+  notion: {
+    title: "Configure Notion",
+    blurb: "Athena crawls the child pages under your root page and indexes them as knowledge.",
+    docs: "https://www.notion.so/profile/integrations",
+    fields: [
+      {
+        key: "notion_api_key",
+        label: "Internal integration token",
+        hint: "Starts with ntn_. Create one under Notion → Settings → Connections, then share your root page with it.",
+        placeholder: "ntn_…",
+        secret: true,
+      },
+      {
+        key: "notion_root_page_id",
+        label: "Root page id",
+        hint: "The 32-character id in the page URL. Everything nested under it gets indexed.",
+        placeholder: "1a2b3c4d…",
+      },
+    ],
+  },
+  tally: {
+    title: "Configure Tally",
+    blurb: "Each form submission is indexed as its own document, so staff can ask what feedback came in.",
+    docs: "https://tally.so/help/api",
+    fields: [
+      {
+        key: "tally_api_key",
+        label: "API key",
+        hint: "A Tally personal access token, from your Tally account settings.",
+        placeholder: "tly_…",
+        secret: true,
+      },
+      {
+        key: "tally_form_ids",
+        label: "Form ids",
+        hint: "Comma separated. Find each id in the form's URL.",
+        placeholder: "wA2xR9, mBv7Kd",
+        list: true,
+      },
+    ],
+  },
+  drive: {
+    title: "Set up Google Drive",
+    blurb: "Share the folder with the Athena service account as a Viewer first, then paste its id here.",
+    docs: "",
+    fields: [
+      {
+        key: "drive_folder_id",
+        label: "Folder id",
+        hint: "The trailing segment of the folder URL, after /folders/.",
+        placeholder: "1AbC…",
+      },
+    ],
+  },
+};
 
-  const ids = formIds
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  const ready = apiKey.trim().length > 0 && ids.length > 0;
+function ConnectorModal({
+  connectorId,
+  configured,
+  onClose,
+}: {
+  connectorId: string;
+  configured: boolean;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const spec = CONNECTOR_FIELDS[connectorId];
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [error, setError] = useState("");
+
+  const ready = spec.fields.every((f) => f.optional || (values[f.key] ?? "").trim());
+
+  async function save() {
+    setState("saving");
+    setError("");
+
+    const body: Record<string, unknown> = {};
+    for (const f of spec.fields) {
+      const raw = (values[f.key] ?? "").trim();
+      if (!raw) continue;
+      body[f.key] = f.list ? raw.split(",").map((v) => v.trim()).filter(Boolean) : raw;
+    }
+
+    try {
+      const res = await fetch("/api/admin/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.text()) || "Could not save");
+      router.refresh();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save");
+      setState("error");
+    }
+  }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-      <input
-        type="password"
-        value={apiKey}
-        onChange={(e) => setApiKey(e.target.value)}
-        placeholder={configured ? "New API key" : "Tally API key"}
-        style={{ ...connectorInputStyle, width: 140 }}
-      />
-      <input
-        value={formIds}
-        onChange={(e) => setFormIds(e.target.value)}
-        placeholder="Form ids, comma separated"
-        style={{ ...connectorInputStyle, width: 180 }}
-      />
-      {ready ? (
-        <SyncButton body={{ tally_api_key: apiKey.trim(), tally_form_ids: ids }} label="Save & sync" />
-      ) : (
-        <span style={{ fontSize: 12, color: "#bbb" }}>
-          {configured ? "Update key + form ids" : "Paste key + form ids"}
-        </span>
-      )}
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+        backdropFilter: "blur(2px)",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={spec.title}
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          width: 480,
+          maxWidth: "calc(100vw - 32px)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
+          overflow: "hidden",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "24px 28px 20px",
+            borderBottom: "1px solid #F0F0F0",
+          }}
+        >
+          <h2 style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
+            {spec.title}
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="btn-press"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 20,
+              color: "#ccc",
+              lineHeight: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 44,
+              height: 44,
+              borderRadius: 8,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ padding: "20px 28px 24px" }}>
+          <p style={{ fontSize: 13.5, color: "#888", lineHeight: 1.6, margin: "0 0 20px" }}>
+            {spec.blurb}
+            {spec.docs && (
+              <>
+                {" "}
+                <a
+                  href={spec.docs}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: "#2563EB", textDecoration: "none" }}
+                >
+                  Where do I find this?
+                </a>
+              </>
+            )}
+          </p>
+
+          {configured && (
+            <p style={{ fontSize: 12.5, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", margin: "0 0 20px", lineHeight: 1.5 }}>
+              Already connected. Saving replaces the stored credentials and re-indexes.
+            </p>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {spec.fields.map((f) => (
+              <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label htmlFor={f.key} style={{ fontSize: 13, color: "#444" }}>
+                  {f.label}
+                </label>
+                <input
+                  id={f.key}
+                  type={f.secret ? "password" : "text"}
+                  value={values[f.key] ?? ""}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  autoComplete="off"
+                  style={{
+                    fontSize: 13.5,
+                    color: "#111",
+                    background: "#fff",
+                    border: "1px solid #E2E2E2",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    outline: "none",
+                    width: "100%",
+                    transition: "border-color 150ms",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#111")}
+                  onBlur={(e) => (e.target.style.borderColor = "#E2E2E2")}
+                />
+                <span style={{ fontSize: 12, color: "#aaa", lineHeight: 1.5 }}>{f.hint}</span>
+              </div>
+            ))}
+          </div>
+
+          {error && (
+            <p style={{ fontSize: 12.5, color: "#b91c1c", margin: "16px 0 0", lineHeight: 1.5 }}>{error}</p>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
+            <button
+              onClick={onClose}
+              className="btn-press"
+              style={{
+                fontSize: 13.5,
+                color: "#888",
+                background: "none",
+                border: "1px solid transparent",
+                borderRadius: 8,
+                padding: "10px 18px",
+                cursor: "pointer",
+                fontWeight: 400,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={!ready || state === "saving"}
+              className="btn-press"
+              style={{
+                fontSize: 13.5,
+                color: "#fff",
+                background: !ready || state === "saving" ? "#bbb" : "#111",
+                border: "none",
+                borderRadius: 8,
+                padding: "10px 20px",
+                cursor: !ready || state === "saving" ? "not-allowed" : "pointer",
+                fontWeight: 400,
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
+              }}
+            >
+              {state === "saving" ? "Saving…" : "Save and sync"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -211,32 +442,28 @@ function NotifyButton({ integration, initiallyNotified }: { integration: string;
   );
 }
 
-function DriveSetup() {
-  const [folderId, setFolderId] = useState("");
+// Opens the connector's setup modal. Styled to match the plain action links it
+// replaced, so the row layout stays a single button per connector.
+function ConfigureButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-      <input
-        value={folderId}
-        onChange={(e) => setFolderId(e.target.value)}
-        placeholder="Drive folder ID"
-        style={{
-          fontSize: 12,
-          color: "#444",
-          background: "#fff",
-          border: "1px solid #E2E2E2",
-          borderRadius: 6,
-          padding: "5px 10px",
-          width: 150,
-          fontWeight: 400,
-          outline: "none",
-        }}
-      />
-      {folderId.trim() ? (
-        <SyncButton body={{ drive_folder_id: folderId.trim() }} label="Sync folder" />
-      ) : (
-        <span style={{ fontSize: 12, color: "#bbb" }}>Paste a folder id</span>
-      )}
-    </div>
+    <button
+      onClick={onClick}
+      className="btn-press"
+      style={{
+        fontSize: 12,
+        color: "#444",
+        background: "#fff",
+        border: "1px solid #E2E2E2",
+        borderRadius: 6,
+        padding: "5px 12px",
+        cursor: "pointer",
+        fontWeight: 400,
+        whiteSpace: "nowrap",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -249,12 +476,15 @@ export default function ConnectionsClient({
   jobs: Job[];
   notifiedIntegrations: string[];
 }) {
+  const [configuring, setConfiguring] = useState<string | null>(null);
+
   const sources = new Set(stats?.source_types ?? []);
   const hasNotion = sources.has("notion");
   const hasGdocs = sources.has("google_docs");
   const hasTally = sources.has("tally");
   const lastSynced = stats?.last_synced ?? null;
   const latestJob = jobs[0] ?? null;
+  const isConfigured: Record<string, boolean> = { notion: hasNotion, tally: hasTally, drive: false };
 
   const CONNECTIONS: Connection[] = [
     {
@@ -443,15 +673,15 @@ export default function ConnectionsClient({
 
               {/* Actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                {conn.id === "drive" && <DriveSetup />}
-                {conn.id === "tally" && <TallySetup configured={hasTally} />}
-                {conn.syncable && conn.id !== "tally" && <SyncButton />}
+                {conn.syncable && <SyncButton />}
                 {conn.status === "soon" ? (
                   <NotifyButton
                     integration={conn.id}
                     initiallyNotified={notifiedIntegrations.includes(conn.id)}
                   />
-                ) : conn.id !== "drive" && conn.id !== "tally" ? (
+                ) : CONNECTOR_FIELDS[conn.id] ? (
+                  <ConfigureButton label={conn.actionLabel} onClick={() => setConfiguring(conn.id)} />
+                ) : (
                   <a
                     href={conn.actionHref ?? "#"}
                     style={{
@@ -468,12 +698,20 @@ export default function ConnectionsClient({
                   >
                     {conn.actionLabel}
                   </a>
-                ) : null}
+                )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {configuring && (
+        <ConnectorModal
+          connectorId={configuring}
+          configured={isConfigured[configuring] ?? false}
+          onClose={() => setConfiguring(null)}
+        />
+      )}
     </>
   );
 }
