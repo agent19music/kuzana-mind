@@ -4,8 +4,38 @@ import Image from "next/image";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { ConnectorState } from "./page";
 
-type Status = "connected" | "partial" | "disconnected" | "soon";
+type Status = "connected" | "partial" | "disconnected" | "syncing" | "error" | "soon";
+
+// Waits for one ingestion run to leave "running". A sync is a background task
+// behind a 202, so without this the UI reads connection state while indexing is
+// still in flight and shows the pre-sync status — the reason configuring a
+// connector used to appear to do nothing until a manual hard refresh.
+const POLL_INTERVAL_MS = 1500;
+const POLL_TIMEOUT_MS = 120_000;
+
+type JobOutcome = { status: "completed" | "failed" | "timeout"; error?: string | null; chunks?: number };
+
+async function waitForJob(jobId: string): Promise<JobOutcome> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    try {
+      const res = await fetch(`/api/admin/sync?job_id=${encodeURIComponent(jobId)}`, { cache: "no-store" });
+      if (!res.ok) continue; // transient — keep polling until the deadline
+      const job = await res.json();
+      if (job.status === "completed") return { status: "completed", chunks: job.chunks };
+      if (job.status === "failed") return { status: "failed", error: job.error };
+    } catch {
+      /* network blip — keep polling */
+    }
+  }
+
+  // Still running. The job itself is unaffected; we just stop watching.
+  return { status: "timeout" };
+}
 
 type OrgStats = { chunk_count: number; last_synced: string | null; source_types: string[] };
 type Job = {
@@ -43,7 +73,12 @@ const NotionLogo = () => (
 
 const STATUS_CONFIG: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
   connected: { label: "Connected", dot: "#22c55e", bg: "#f0fdf4", text: "#15803d" },
-  partial: { label: "Partial", dot: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
+  syncing: { label: "Syncing", dot: "#3b82f6", bg: "#eff6ff", text: "#1d4ed8" },
+  // "Partial" now means only one thing: credentials are stored but the run
+  // indexed nothing (bad key, empty form, revoked access). A connector with no
+  // credentials is "Not connected".
+  partial: { label: "Nothing indexed", dot: "#f59e0b", bg: "#fffbeb", text: "#b45309" },
+  error: { label: "Last sync failed", dot: "#ef4444", bg: "#fef2f2", text: "#b91c1c" },
   disconnected: { label: "Not connected", dot: "#d1d5db", bg: "#f9fafb", text: "#6b7280" },
   soon: { label: "Coming soon", dot: "#c4b5fd", bg: "#f5f3ff", text: "#7c3aed" },
 };
@@ -76,9 +111,15 @@ function SyncButton({ body, label = "Sync now" }: { body?: Record<string, unknow
         body: JSON.stringify(body ?? {}),
       });
       if (!res.ok) throw new Error(await res.text());
-      setState("done");
+
+      // Wait for the background run to settle before refreshing, so the row
+      // reflects the sync that just happened rather than the state before it.
+      const { job_id: jobId } = await res.json();
+      const outcome = jobId ? await waitForJob(jobId) : { status: "completed" as const };
+
       router.refresh();
-      setTimeout(() => setState("idle"), 3000);
+      setState(outcome.status === "failed" ? "error" : "done");
+      setTimeout(() => setState("idle"), outcome.status === "failed" ? 4000 : 3000);
     } catch (err) {
       console.error("Sync failed:", err);
       setState("error");
@@ -194,9 +235,10 @@ function ConnectorModal({
   const router = useRouter();
   const spec = CONNECTOR_FIELDS[connectorId];
   const [values, setValues] = useState<Record<string, string>>({});
-  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [state, setState] = useState<"idle" | "saving" | "syncing" | "error">("idle");
   const [error, setError] = useState("");
 
+  const busy = state === "saving" || state === "syncing";
   const ready = spec.fields.every((f) => f.optional || (values[f.key] ?? "").trim());
 
   async function save() {
@@ -217,6 +259,29 @@ function ConnectorModal({
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.text()) || "Could not save");
+
+      // Credentials are saved at this point, but indexing runs in the
+      // background. Hold the modal open until the run settles so the user sees
+      // the outcome here instead of closing onto a stale "Not connected" row.
+      const { job_id: jobId } = await res.json();
+      if (jobId) {
+        setState("syncing");
+        const outcome = await waitForJob(jobId);
+
+        if (outcome.status === "failed") {
+          setError(outcome.error || "The sync failed. Check the credentials and try again.");
+          setState("error");
+          router.refresh();
+          return;
+        }
+        if (outcome.status === "timeout") {
+          // Still indexing — closing is safe, the row picks it up on next load.
+          router.refresh();
+          onClose();
+          return;
+        }
+      }
+
       router.refresh();
       onClose();
     } catch (err) {
@@ -363,25 +428,25 @@ function ConnectorModal({
                 fontWeight: 400,
               }}
             >
-              Cancel
+              {state === "syncing" ? "Close and keep syncing" : "Cancel"}
             </button>
             <button
               onClick={save}
-              disabled={!ready || state === "saving"}
+              disabled={!ready || busy}
               className="btn-press"
               style={{
                 fontSize: 13.5,
                 color: "#fff",
-                background: !ready || state === "saving" ? "#bbb" : "#111",
+                background: !ready || busy ? "#bbb" : "#111",
                 border: "none",
                 borderRadius: 8,
                 padding: "10px 20px",
-                cursor: !ready || state === "saving" ? "not-allowed" : "pointer",
+                cursor: !ready || busy ? "not-allowed" : "pointer",
                 fontWeight: 400,
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
               }}
             >
-              {state === "saving" ? "Saving…" : "Save and sync"}
+              {state === "saving" ? "Saving…" : state === "syncing" ? "Indexing…" : "Save and sync"}
             </button>
           </div>
         </div>
@@ -471,60 +536,86 @@ export default function ConnectionsClient({
   stats,
   jobs,
   notifiedIntegrations,
+  connectors,
 }: {
   stats: OrgStats | null;
   jobs: Job[];
   notifiedIntegrations: string[];
+  connectors: Record<string, ConnectorState>;
 }) {
   const [configuring, setConfiguring] = useState<string | null>(null);
 
-  const sources = new Set(stats?.source_types ?? []);
-  const hasNotion = sources.has("notion");
-  const hasGdocs = sources.has("google_docs");
-  const hasTally = sources.has("tally");
   const lastSynced = stats?.last_synced ?? null;
   const latestJob = jobs[0] ?? null;
-  const isConfigured: Record<string, boolean> = { notion: hasNotion, tally: hasTally, drive: false };
+
+  // Status comes from the backend's per-connector view, which knows whether
+  // credentials are stored. Deriving it from indexed chunk types (as this page
+  // used to) can't tell "never set up" apart from "set up but nothing indexed",
+  // so an unconfigured connector was reported as partially connected.
+  const stateFor = (id: string): ConnectorState =>
+    connectors[id] ?? { configured: false, status: "disconnected", chunk_count: 0, last_synced: null };
+
+  // Row subtitle, driven by the connector's real state rather than a single
+  // "has data / has no data" fork.
+  const metaFor = (id: string, notConfiguredHint: string): string => {
+    const s = stateFor(id);
+    switch (s.status) {
+      case "connected":
+        return `${s.chunk_count.toLocaleString()} chunks · last synced ${relativeTime(s.last_synced)}`;
+      case "syncing":
+        return "Indexing now — this can take a minute";
+      case "partial":
+        return "Credentials saved, but nothing was indexed · check the key and access";
+      case "error":
+        return "Last sync failed · re-enter credentials to retry";
+      default:
+        return notConfiguredHint;
+    }
+  };
 
   const CONNECTIONS: Connection[] = [
     {
       id: "notion",
       name: "Notion",
       description: "Sync pages and databases from your Notion workspace.",
-      status: hasNotion ? "connected" : "disconnected",
-      meta: hasNotion ? `Last synced ${relativeTime(lastSynced)}` : "No Notion pages indexed yet",
+      status: stateFor("notion").status,
+      meta: metaFor("notion", "Not set up · needs an integration token and root page"),
       actionLabel: "Configure",
-      syncable: hasNotion,
+      syncable: stateFor("notion").configured,
       logo: <NotionLogo />,
     },
     {
       id: "gdocs",
       name: "Google Docs",
       description: "Index public Google Docs shared with your workspace.",
-      status: hasGdocs ? "connected" : "partial",
-      meta: hasGdocs ? `Last synced ${relativeTime(lastSynced)}` : "No documents indexed · No auth required",
+      status: stateFor("google_docs").status,
+      meta: metaFor("google_docs", "Not set up · no auth required, just share the doc"),
       actionLabel: "Manage docs",
-      syncable: hasGdocs,
+      syncable: stateFor("google_docs").configured,
       logo: <Image src="/icons/google-docs.png" alt="Google Docs" width={22} height={22} />,
     },
     {
       id: "tally",
       name: "Tally",
       description: "Pull form and survey responses so staff can ask about the feedback they've received.",
-      status: hasTally ? "connected" : "partial",
-      meta: hasTally ? `Last synced ${relativeTime(lastSynced)}` : "No forms indexed yet · Needs an API key",
+      status: stateFor("tally").status,
+      meta: metaFor("tally", "Not set up · needs an API key and form ids"),
       actionLabel: "Configure",
-      syncable: hasTally,
+      syncable: stateFor("tally").configured,
       logo: <Image src="/icons/tally.svg" alt="Tally" width={22} height={22} />,
     },
     {
       id: "drive",
       name: "Google Drive",
       description: "Full Drive folder sync via service account connector.",
-      status: "disconnected",
-      meta: "Share a folder with the service account, then sync by folder id",
-      actionLabel: "Set up",
-      syncable: false,
+      status: stateFor("drive").status,
+      // Drive's chunks are tagged "google_docs" by its loader, so indexed
+      // volume isn't attributable to it — hence no chunk count here.
+      meta: stateFor("drive").configured
+        ? "Folder configured · shares indexed volume with Google Docs"
+        : "Not set up · share a folder with the service account, then add its id",
+      actionLabel: stateFor("drive").configured ? "Change folder" : "Set up",
+      syncable: stateFor("drive").configured,
       logo: <Image src="/icons/google-drive.svg" alt="Google Drive" width={22} height={22} />,
     },
     {
@@ -708,7 +799,7 @@ export default function ConnectionsClient({
       {configuring && (
         <ConnectorModal
           connectorId={configuring}
-          configured={isConfigured[configuring] ?? false}
+          configured={stateFor(configuring).configured}
           onClose={() => setConfiguring(null)}
         />
       )}

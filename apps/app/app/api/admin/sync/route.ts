@@ -4,6 +4,33 @@ import { NextRequest, NextResponse } from "next/server";
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 const BACKEND_API_SECRET = process.env.BACKEND_API_SECRET ?? "";
 
+// Polls one ingestion run. POST /ingest returns a job_id precisely so the
+// client can wait for the background task to finish before re-reading
+// connection state — a 202 says the sync started, not that it worked.
+export async function GET(request: NextRequest) {
+  const { orgId, getToken } = await auth();
+  if (!orgId) return NextResponse.json({ error: "No organisation" }, { status: 401 });
+
+  const jobId = request.nextUrl.searchParams.get("job_id");
+  if (!jobId) return NextResponse.json({ error: "job_id is required" }, { status: 400 });
+
+  try {
+    const token = await getToken();
+    const res = await fetch(`${BACKEND_URL}/ingest/jobs/${encodeURIComponent(jobId)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      return NextResponse.json({ error: await res.text() }, { status: res.status });
+    }
+    return NextResponse.json(await res.json());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to reach backend";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const { orgId, orgRole, getToken } = await auth();
 
