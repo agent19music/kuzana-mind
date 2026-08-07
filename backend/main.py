@@ -198,11 +198,18 @@ async def preview_document(
         raise HTTPException(status_code=404, detail="Document not found.")
 
     ordered = sorted(rows, key=lambda r: (r.metadata_ or {}).get("chunk_index", 0))
+    content = "\n\n".join(r.chunk_text for r in ordered)
+
+    # .md uploads: the reassembled chunk text IS the original markdown source
+    # (extract_text decodes .md as plain text, unmodified) — render it as
+    # such instead of a flat paragraph. No storage/GCS dependency, unlike PDF.
+    if file_row and file_row.mime_type == "text/markdown":
+        return {"mode": "markdown", "title": ordered[0].title, "content": content}
 
     return {
         "mode": "text",
         "title": ordered[0].title,
-        "content": "\n\n".join(r.chunk_text for r in ordered),
+        "content": content,
     }
 
 
@@ -536,7 +543,12 @@ async def upload_files(
 
         title = Path(file.filename).stem.replace("_", " ").replace("-", " ").title()
 
-        mime_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+        # Browsers/mimetypes are unreliable for .md specifically (often
+        # empty or application/octet-stream) — pin it explicitly since the
+        # preview endpoint's mode switch depends on this value being stable.
+        mime_type = "text/markdown" if ext == ".md" else (
+            file.content_type or mimetypes.guess_type(file.filename)[0]
+        )
         storage_path = None
         if storage.enabled():
             try:

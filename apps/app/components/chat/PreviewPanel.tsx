@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
+import ReactMarkdown from "react-markdown";
 import PdfPreview from "./PdfPreview";
 
 type PreviewData =
   | { mode: "text"; title: string | null; content: string }
+  | { mode: "markdown"; title: string | null; content: string }
   | { mode: "pdf"; title: string | null; signed_url: string; page_count: number };
 
 type Props = {
@@ -34,6 +36,7 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
   const [data, setData] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const markRef = useRef<HTMLElement>(null);
+  const calloutRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +53,7 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
   }, [docId, sourceType]);
 
   useEffect(() => {
-    markRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    (markRef.current ?? calloutRef.current)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [data]);
 
   const parts = data?.mode === "text" ? splitOnExcerpt(data.content, excerpt) : null;
@@ -159,6 +162,35 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
               )}
               {parts.after}
             </p>
+          )}
+          {data?.mode === "markdown" && (
+            <>
+              {/* A citation callout, not an inline highlight — react-markdown
+                  doesn't render raw HTML by default (and shouldn't, for
+                  content from an org's own uploads), so there's no safe way
+                  to wrap a <mark> around arbitrary rendered markdown output.
+                  This gets the same "here's what was cited" value instead. */}
+              {excerpt && (
+                <div
+                  ref={calloutRef}
+                  style={{
+                    background: "#FFFBEB",
+                    border: "1px solid #FEF3C7",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    marginBottom: 16,
+                    fontSize: 13,
+                    color: "#78350F",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {excerpt}
+                </div>
+              )}
+              <div style={{ fontSize: 14, color: "#333", lineHeight: 1.7 }}>
+                <ReactMarkdown>{data.content}</ReactMarkdown>
+              </div>
+            </>
           )}
           {data?.mode === "pdf" && (
             <PdfPreview signedUrl={data.signed_url} pageCount={data.page_count} excerpt={excerpt} />
