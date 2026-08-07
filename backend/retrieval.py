@@ -6,7 +6,7 @@ from database import session_for_org
 from embeddings import embed_query
 from generation import condense_question, synthesize_answer
 
-SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
+SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.65"))
 
 
 def _provider_doc_id(doc_id: str) -> str:

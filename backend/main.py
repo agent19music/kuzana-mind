@@ -1,6 +1,14 @@
 import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+
+# Must run before any project-local import below, since several of them
+# read env vars (e.g. SIMILARITY_THRESHOLD, DATABASE_URL) at module import
+# time. Running the backend directly via `uvicorn main:app` (as documented
+# in backend/CLAUDE.md) never otherwise loads backend/.env.
+load_dotenv()
+
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
