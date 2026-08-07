@@ -26,6 +26,7 @@
 | Wallet / Web3 | Thirdweb removed. Avalanche audit trail specced as separate `backend/audit.py` (post-MVP). |
 | Onboarding flow | `/register` → Clerk SignUp → `/onboarding` → POST `/api/orgs` → creates Clerk org + triggers ingest → `/dashboard` |
 | Data sources per org | Each org brings their own Notion integration key + array of public Google Doc URLs. |
+| Feedback forms connector | Tally chosen over building a MCP tool-calling path — Tally's own MCP server (beta) is a live-lookup agent tool, incompatible with Athena's pre-indexed pgvector RAG flow. Built as a REST connector matching Notion/Google Docs: per-org `tally_api_key` + `tally_form_ids`, one document per submission. |
 
 ---
 
@@ -39,6 +40,7 @@
 - Plain-text chunking pipeline (header-based via LangChain)
 - Public Google Doc ingestion — per-org `public_doc_ids` array
 - Notion ingestion — per-org `notion_api_key` + `notion_root_page_id`
+- Tally ingestion — per-org `tally_api_key` + `tally_form_ids` (form feedback/survey submissions, one document per response)
 - Clerk auth — sign up, sign in, org creation, JWT-gated backend
 - Onboarding form — org name, logo, Notion keys, Google Doc URLs
 - Dashboard — org stats, action cards, admin/member role distinction
