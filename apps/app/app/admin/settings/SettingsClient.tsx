@@ -2,38 +2,12 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { ArrowRight, Camera, PencilSimple } from "@phosphor-icons/react";
 import FileUploadCard from "./FileUploadCard";
 
-const arrowIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const cameraIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path
-      d="M6 2l-1 2H2a1 1 0 00-1 1v8a1 1 0 001 1h12a1 1 0 001-1V5a1 1 0 00-1-1h-3L10 2H6z"
-      stroke="currentColor"
-      strokeWidth="1.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <circle cx="8" cy="8.5" r="2" stroke="currentColor" strokeWidth="1.25" />
-  </svg>
-);
-
-const pencilIcon = (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path
-      d="M9.5 2.5l2 2L4 12H2v-2L9.5 2.5z"
-      stroke="currentColor"
-      strokeWidth="1.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
+const arrowIcon = <ArrowRight size={14} />;
+const cameraIcon = <Camera size={18} />;
+const pencilIcon = <PencilSimple size={14} />;
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (

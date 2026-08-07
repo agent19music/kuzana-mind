@@ -90,14 +90,20 @@
 }
 .account-menu-item:active { background: #efefef; }
 
-/* Pill button — press feedback + border hover */
+/* Pill button — press feedback + background & border hover (Emil design engineering) */
 .btn-pill {
-  transition: border-color 150ms var(--ease-out), transform 150ms var(--ease-out);
+  transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out), color 150ms var(--ease-out), transform 150ms var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
-  .btn-pill:hover { border-color: #c4c4c4; }
+  .btn-pill:hover {
+    background: #f4f4f5 !important;
+    border-color: #d4d4d8 !important;
+    color: #09090b !important;
+  }
 }
-.btn-pill:active { transform: scale(0.96); }
+.btn-pill:active {
+  transform: scale(0.96);
+}
 
 /* Inline edit row — pencil fades in on hover */
 .edit-row { display: flex; align-items: center; gap: 10px; }

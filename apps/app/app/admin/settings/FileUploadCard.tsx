@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { FileArrowUp, FolderSimplePlus } from "@phosphor-icons/react";
 
 type UploadResult = {
   uploaded: number;
@@ -100,15 +101,19 @@ export default function FileUploadCard() {
             className="btn-pill"
             style={{
               fontSize: 13,
+              fontWeight: 500,
               color: "#1a1a1a",
-              background: "none",
+              background: "#fff",
               border: "1px solid #e5e5e5",
               borderRadius: 9999,
               padding: "7px 16px",
               cursor: isUploading ? "not-allowed" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            Choose files
+            <FileArrowUp size={14} /> Choose files
           </button>
 
           <input
@@ -127,15 +132,19 @@ export default function FileUploadCard() {
             className="btn-pill"
             style={{
               fontSize: 13,
+              fontWeight: 500,
               color: "#1a1a1a",
-              background: "none",
+              background: "#fff",
               border: "1px solid #e5e5e5",
               borderRadius: 9999,
               padding: "7px 16px",
               cursor: isUploading ? "not-allowed" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            Choose folder
+            <FolderSimplePlus size={14} /> Choose folder
           </button>
         </div>
       </div>

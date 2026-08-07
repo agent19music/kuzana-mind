@@ -15,6 +15,9 @@ export async function GET() {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
+    if (res.status === 404) {
+      return NextResponse.json({ documents: [] }, { status: 200 });
+    }
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch (err) {
