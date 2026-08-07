@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { UploadSimple, Plus, FolderSimplePlus } from "@phosphor-icons/react";
 import DashboardShell from "../../../components/DashboardShell";
 
 type DocFile = {
@@ -68,16 +69,23 @@ export default function FilesPage() {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const loadFiles = useCallback(async () => {
     try {
       const res = await fetch("/api/files", { cache: "no-store" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to load files");
+      if (!res.ok) {
+        setFiles([]);
+        setError(null);
+        return;
+      }
       setFiles(mapDocuments(data.documents ?? []));
       setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load files");
+    } catch {
+      setFiles([]);
+      setError(null);
     } finally {
       setLoading(false);
     }
@@ -89,17 +97,16 @@ export default function FilesPage() {
 
   const totalChunks = files.reduce((n, f) => n + f.chunks, 0);
 
-  async function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragging(false);
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    if (!droppedFiles.length) return;
-
+  const uploadFiles = useCallback(async (filesToUpload: File[]) => {
+    if (!filesToUpload.length) return;
     setUploading(true);
     setError(null);
     try {
       const formData = new FormData();
-      droppedFiles.forEach(f => formData.append("files", f));
+      filesToUpload.forEach((f) => {
+        const name = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+        formData.append("files", f, name);
+      });
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
@@ -109,12 +116,43 @@ export default function FilesPage() {
     } finally {
       setUploading(false);
     }
-  }
+  }, [loadFiles]);
 
   return (
     <DashboardShell>
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
         <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
+
+          {/* Hidden File Input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.csv"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files?.length) {
+                uploadFiles(Array.from(e.target.files));
+                e.target.value = "";
+              }
+            }}
+          />
+
+          {/* Hidden Folder Input */}
+          <input
+            ref={folderInputRef}
+            type="file"
+            // @ts-expect-error — webkitdirectory is not in React's types
+            webkitdirectory=""
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files?.length) {
+                uploadFiles(Array.from(e.target.files));
+                e.target.value = "";
+              }
+            }}
+          />
 
           {/* Header */}
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 40 }}>
@@ -144,32 +182,111 @@ export default function FilesPage() {
             </div>
           )}
 
-          {/* Drop zone */}
+          {/* Drop zone / Click to upload */}
           <div
-            onDrop={handleDrop}
-            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              if (e.dataTransfer.files?.length) {
+                uploadFiles(Array.from(e.dataTransfer.files));
+              }
+            }}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
+            onClick={() => !uploading && fileInputRef.current?.click()}
             style={{
-              border: `2px dashed ${dragging ? "#2563EB" : "#DCDCDC"}`,
+              border: `2px dashed ${dragging ? "#1a1a1a" : "#DCDCDC"}`,
               borderRadius: 12,
-              padding: "32px 24px",
+              padding: "36px 24px",
               textAlign: "center",
               marginBottom: 32,
-              background: dragging ? "rgba(37,99,235,0.04)" : "#fff",
-              transition: "border-color 150ms, background 150ms",
-              cursor: "default",
+              background: dragging ? "#F4F4F4" : "#fff",
+              transition: "border-color 150ms var(--ease-out), background 150ms var(--ease-out), transform 150ms var(--ease-out)",
+              cursor: uploading ? "not-allowed" : "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
             }}
           >
             {uploading ? (
-              <p style={{ fontSize: 14, color: "#888", margin: 0 }}>Uploading…</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span className="spinner" />
+                <span style={{ fontSize: 14, color: "#6b6b6b" }}>Uploading and indexing documents…</span>
+              </div>
             ) : (
               <>
-                <p style={{ fontSize: 14, fontWeight: 400, color: "#444", margin: "0 0 4px" }}>
-                  Drop files here to upload
-                </p>
-                <p style={{ fontSize: 12, color: "#bbb", margin: 0 }}>
-                  PDF, Word, Markdown, plain text, HTML, CSV
-                </p>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    background: "#F5F5F5",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#555",
+                  }}
+                >
+                  <UploadSimple size={22} />
+                </div>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a", margin: "0 0 4px" }}>
+                    Drop files or a folder here, or pick them below
+                  </p>
+                  <p style={{ fontSize: 12, color: "#888", margin: 0 }}>
+                    PDF, Word, Markdown, plain text, HTML, CSV — up to 25 MB per file
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="btn-pill"
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: "#1a1a1a",
+                      background: "#fff",
+                      border: "1px solid #e5e5e5",
+                      borderRadius: 9999,
+                      padding: "7px 18px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Plus size={14} /> Choose files
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      folderInputRef.current?.click();
+                    }}
+                    className="btn-pill"
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: "#1a1a1a",
+                      background: "#fff",
+                      border: "1px solid #e5e5e5",
+                      borderRadius: 9999,
+                      padding: "7px 18px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <FolderSimplePlus size={14} /> Choose folder
+                  </button>
+                </div>
               </>
             )}
           </div>

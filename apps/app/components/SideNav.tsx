@@ -6,18 +6,31 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-// Icons — 16px, 1.4 stroke, round caps/joins
+import {
+  House,
+  ChatTeardropText,
+  FileText,
+  Plugs,
+  Users,
+  Gear,
+  CreditCard,
+  ChartBar,
+  CaretUp,
+  SignOut,
+} from "@phosphor-icons/react";
+
+// Phosphor icons — 16px
 const I = {
-  home:    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.5 7L8 1.5 14.5 7V14a.5.5 0 01-.5.5H10V10h-4v4.5H2a.5.5 0 01-.5-.5V7z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>,
-  chat:    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 3A.5.5 0 013 2.5h10a.5.5 0 01.5.5v7a.5.5 0 01-.5.5H9L6.5 13V10H3a.5.5 0 01-.5-.5V3z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>,
-  file:    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M9.5 1.5H4a1 1 0 00-1 1v11a1 1 0 001 1h8a1 1 0 001-1V5.5L9.5 1.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M9.5 1.5v4h4" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>,
-  plug:    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 2v3M10 2v3M5 5h6a2 2 0 010 4h-1v4l-2 1.5L6 13V9H5a2 2 0 010-4z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"/></svg>,
-  users:   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5.5" r="2" stroke="currentColor" strokeWidth="1.4"/><path d="M1.5 13.5c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M11 3.5a2 2 0 010 4M14.5 13.5c0-2.21-1.57-4.06-3.5-4.43" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
-  gear:    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.25" stroke="currentColor" strokeWidth="1.4"/><path d="M8 1.5v1.25M8 13.25V14.5M1.5 8h1.25M13.25 8H14.5M3.4 3.4l.88.88M11.72 11.72l.88.88M3.4 12.6l.88-.88M11.72 4.28l.88-.88" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
-  credit:  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="3.5" width="13" height="9" rx="1" stroke="currentColor" strokeWidth="1.4"/><path d="M1.5 7h13" stroke="currentColor" strokeWidth="1.4"/><rect x="3.5" y="9.5" width="2.5" height="1.5" rx=".5" fill="currentColor"/></svg>,
-  chart:   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2v11a.5.5 0 00.5.5H14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M5 10.5V8M8 10.5V5M11 10.5V6.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
-  chevUp:  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 8l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-  signout: <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M6 2H3a1 1 0 00-1 1v9a1 1 0 001 1h3M10 10.5l3-3-3-3M13 7.5H6" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  home:    <House size={16} />,
+  chat:    <ChatTeardropText size={16} />,
+  file:    <FileText size={16} />,
+  plug:    <Plugs size={16} />,
+  users:   <Users size={16} />,
+  gear:    <Gear size={16} />,
+  credit:  <CreditCard size={16} />,
+  chart:   <ChartBar size={16} />,
+  chevUp:  <CaretUp size={12} />,
+  signout: <SignOut size={15} />,
 };
 
 const MAIN_ITEMS = [

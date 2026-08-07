@@ -37,12 +37,8 @@ const NotionLogo = () => (
   </svg>
 );
 
-const TallyLogo = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-    <rect x="1" y="1" width="22" height="22" rx="6" fill="#000"/>
-    <path d="M6 8h12M6 12h8M6 16h5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-  </svg>
-);
+
+
 
 const STATUS_CONFIG: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
   connected: { label: "Connected", dot: "#22c55e", bg: "#f0fdf4", text: "#15803d" },
@@ -183,7 +179,7 @@ export default function ConnectionsClient({ stats, jobs }: { stats: OrgStats | n
       meta: hasTally ? `Last synced ${relativeTime(lastSynced)}` : "No forms indexed yet · Needs an API key",
       actionLabel: "Configure",
       syncable: hasTally,
-      logo: <TallyLogo />,
+      logo: <Image src="/icons/tally.svg" alt="Tally" width={22} height={22} />,
     },
     {
       id: "drive",
