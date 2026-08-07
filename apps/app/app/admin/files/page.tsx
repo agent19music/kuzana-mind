@@ -261,7 +261,7 @@ export default function FilesPage() {
             }}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
-            onClick={() => !uploading && fileInputRef.current?.click()}
+            onClick={() => fileInputRef.current?.click()}
             style={{
               border: `2px dashed ${dragging ? "#1a1a1a" : "#DCDCDC"}`,
               borderRadius: 12,
@@ -270,7 +270,7 @@ export default function FilesPage() {
               marginBottom: 32,
               background: dragging ? "#F4F4F4" : "#fff",
               transition: "border-color 150ms var(--ease-out), background 150ms var(--ease-out), transform 150ms var(--ease-out)",
-              cursor: uploading ? "not-allowed" : "pointer",
+              cursor: "pointer",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -278,13 +278,7 @@ export default function FilesPage() {
               gap: 12,
             }}
           >
-            {uploading ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="spinner" />
-                <span style={{ fontSize: 14, color: "#6b6b6b" }}>Uploading and indexing documents…</span>
-              </div>
-            ) : (
-              <>
+            <>
                 <div
                   style={{
                     width: 44,
@@ -355,9 +349,10 @@ export default function FilesPage() {
                     <FolderSimplePlus size={14} /> Choose folder
                   </button>
                 </div>
-              </>
-            )}
+            </>
           </div>
+
+          <UploadQueue items={queue} onRetry={retryItem} onDismiss={dismissItem} />
 
           {/* File table */}
           <div
