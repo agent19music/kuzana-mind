@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -5,6 +6,7 @@ from pathlib import Path
 
 import httpx
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+from sqlalchemy.sql import func
 
 from database import DocumentChunk, get_session, session_for_org
 from embeddings import embed_documents
@@ -319,9 +321,134 @@ def _tally_answer_text(value) -> str:
     return str(value)
 
 
-def _tally_submission_to_doc(form_id: str, form_name: str, question_labels: dict, submission: dict) -> dict:
+# Tally's question types, normalised to the buckets the aggregates key off.
+# Verified against a live form: DROPDOWN/MULTIPLE_CHOICE/CHECKBOXES answer with
+# a list of resolved *labels* (not ids), LINEAR_SCALE with a bare number,
+# INPUT_TEXT/TEXTAREA with a string, MATRIX with {row_id: [labels]}.
+# Anything unrecognised falls to "other" and is still stored via raw_value.
+_TALLY_KIND_BY_TYPE = {
+    "INPUT_TEXT": "short_text",
+    "INPUT_EMAIL": "short_text",
+    "INPUT_LINK": "short_text",
+    "INPUT_PHONE_NUMBER": "short_text",
+    "TEXTAREA": "long_text",
+    "INPUT_NUMBER": "number",
+    "LINEAR_SCALE": "rating",
+    "RATING": "rating",
+    "DROPDOWN": "choice",
+    "MULTIPLE_CHOICE": "choice",
+    "CHECKBOXES": "choice",
+    "MULTI_SELECT": "choice",
+    "RANKING": "choice",
+    "INPUT_DATE": "date",
+    "INPUT_TIME": "date",
+    "MATRIX": "matrix",
+}
+
+# Kinds whose text is embedded for semantic search / theme clustering. Choice and
+# numeric answers are counted with GROUP BY, so embedding them buys nothing.
+EMBEDDABLE_KINDS = {"short_text", "long_text"}
+
+
+def _normalise_tally_answer(kind: str, value) -> dict:
+    """Project one Tally answer onto the typed columns, keeping the raw payload.
+
+    Exactly one typed column is normally populated; raw_value always is, so a
+    shape we normalise imperfectly today is never lost.
+    """
+    out = {
+        "answer_text": None,
+        "answer_numeric": None,
+        "answer_choices": None,
+        "raw_value": value,
+    }
+
+    if value is None or value == "" or value == []:
+        return out
+
+    if kind in ("short_text", "long_text", "date"):
+        out["answer_text"] = _tally_answer_text(value)
+    elif kind in ("number", "rating"):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out["answer_numeric"] = value
+        else:
+            # Ratings occasionally arrive as a one-element list or a string.
+            text_value = _tally_answer_text(value)
+            try:
+                out["answer_numeric"] = float(text_value)
+            except (TypeError, ValueError):
+                out["answer_text"] = text_value
+    elif kind == "choice":
+        choices = value if isinstance(value, list) else [value]
+        out["answer_choices"] = [c for c in (_tally_answer_text(v) for v in choices) if c]
+    elif kind == "matrix":
+        # {row_id: [column labels]} — flattened to choices for counting, with the
+        # per-row detail preserved in raw_value.
+        if isinstance(value, dict):
+            flat = []
+            for picks in value.values():
+                flat.extend(c for c in (_tally_answer_text(v) for v in (picks or [])) if c)
+            out["answer_choices"] = flat
+        else:
+            out["answer_text"] = _tally_answer_text(value)
+    else:
+        out["answer_text"] = _tally_answer_text(value)
+
+    return out
+
+
+def _tally_structured(
+    form_id: str, form_name: str, questions: list[dict], submission: dict, doc_id: str
+) -> dict:
+    """The submission as rows rather than prose — see the form_structured_store
+    migration for why both are written."""
+    meta = {
+        (q.get("id") or q.get("uuid")): {
+            "kind": _TALLY_KIND_BY_TYPE.get(q.get("type", ""), "other"),
+            "raw_type": q.get("type"),
+            "label": q.get("title", ""),
+            "position": i,
+        }
+        for i, q in enumerate(questions)
+    }
+
+    answers = []
+    for response in submission.get("responses", []):
+        question_id = response.get("questionId", "")
+        if not question_id:
+            continue
+        info = meta.get(question_id, {"kind": "other", "raw_type": None, "label": question_id, "position": None})
+        value = response.get("answer", response.get("value"))
+        answers.append({
+            "question_id": question_id,
+            "kind": info["kind"],
+            **_normalise_tally_answer(info["kind"], value),
+        })
+
+    return {
+        "form_id": form_id,
+        "form_name": form_name,
+        "external_id": submission.get("id", ""),
+        "respondent_id": submission.get("respondentId"),
+        "submitted_at": submission.get("submittedAt"),
+        "is_completed": submission.get("isCompleted"),
+        "doc_id": doc_id,
+        "questions": [
+            {"question_id": qid, **info} for qid, info in meta.items()
+        ],
+        "answers": answers,
+    }
+
+
+def _tally_submission_to_doc(form_id: str, form_name: str, questions: list[dict], submission: dict) -> dict:
     """One document per submission — keeps a single respondent's feedback intact
-    for retrieval instead of fragmenting it into a chunk per question."""
+    for retrieval instead of fragmenting it into a chunk per question.
+
+    Also carries a `structured` payload built from the same API response, so the
+    row-level store is populated without a second round trip to Tally.
+    """
+    question_labels = {(q.get("id") or q.get("uuid")): q.get("title", "") for q in questions}
+
     lines = [f"Form: {form_name}", f"Submitted: {submission.get('submittedAt', '')}", ""]
     for response in submission.get("responses", []):
         question_id = response.get("questionId", "")
@@ -334,11 +461,13 @@ def _tally_submission_to_doc(form_id: str, form_name: str, question_labels: dict
         lines.append("")
 
     submission_id = submission.get("id", "")
+    doc_id = f"{form_id}_{submission_id}" if submission_id else form_id
     return {
-        "doc_id": f"{form_id}_{submission_id}" if submission_id else form_id,
+        "doc_id": doc_id,
         "title": f"{form_name} — response {submission_id[:8]}" if submission_id else f"{form_name} response",
         "content": "\n".join(lines).strip(),
         "source_type": "tally",
+        "structured": _tally_structured(form_id, form_name, questions, submission, doc_id),
     }
 
 
@@ -368,15 +497,12 @@ def load_from_tally(api_key: str, form_ids_raw: str) -> list[dict]:
                 resp.raise_for_status()
                 data = resp.json()
 
-                question_labels = {
-                    (q.get("id") or q.get("uuid")): q.get("title", "")
-                    for q in data.get("questions", [])
-                }
+                questions = data.get("questions", [])
 
                 for submission in data.get("submissions", []):
                     if not submission.get("responses"):
                         continue
-                    docs.append(_tally_submission_to_doc(form_id, form_name, question_labels, submission))
+                    docs.append(_tally_submission_to_doc(form_id, form_name, questions, submission))
                     fetched += 1
 
                 if not data.get("hasMore"):
@@ -508,6 +634,155 @@ def chunk_document(doc: dict) -> list[dict]:
 # Main ingestion entry point
 # ---------------------------------------------------------------------------
 
+def _answer_hash(text_value: str) -> str:
+    return hashlib.sha256(text_value.encode("utf-8")).hexdigest()
+
+
+async def persist_form_submissions(org_id: str, docs: list[dict]) -> dict:
+    """Write form submissions as rows alongside the text chunks already stored.
+
+    Additive to retrieval: `documents` is untouched here, so RAG behaves exactly
+    as before. What this buys is countable data — "how many chose X" becomes a
+    GROUP BY instead of an inference from a top-k sample.
+
+    Embeddings are computed only for free-text answers, and only for text whose
+    hash is not already stored for this org, so a re-sync of an unchanged form
+    embeds nothing. Repeated answers ("Yes", "npm") embed once and are reused.
+    """
+    from database import FormAnswer, FormDefinition, FormQuestion, FormResponse
+
+    submissions = [d["structured"] for d in docs if d.get("structured")]
+    if not submissions:
+        return {"forms": 0, "responses": 0, "answers": 0, "embedded": 0}
+
+    # ---- forms + questions -------------------------------------------------
+    forms: dict[str, str] = {}          # form_id -> name
+    questions: dict[tuple[str, str], dict] = {}
+    for sub in submissions:
+        forms[sub["form_id"]] = sub["form_name"]
+        for q in sub["questions"]:
+            questions[(sub["form_id"], q["question_id"])] = q
+
+    # ---- embedding cache: existing hashes for this org ---------------------
+    free_text: dict[str, str] = {}      # hash -> text, for answers needing a vector
+    for sub in submissions:
+        for a in sub["answers"]:
+            if a["kind"] in EMBEDDABLE_KINDS and a["answer_text"]:
+                free_text[_answer_hash(a["answer_text"])] = a["answer_text"]
+
+    known: dict[str, list[float]] = {}
+    if free_text:
+        with session_for_org(org_id) as session:
+            rows = (
+                session.query(FormAnswer.text_hash, FormAnswer.embedding)
+                .filter(
+                    FormAnswer.org_id == org_id,
+                    FormAnswer.text_hash.in_(list(free_text)),
+                    FormAnswer.embedding.isnot(None),
+                )
+                .all()
+            )
+            for h, vec in rows:
+                if h and vec is not None and h not in known:
+                    known[h] = vec
+
+    to_embed = [h for h in free_text if h not in known]
+    if to_embed:
+        print(f"  Embedding {len(to_embed)} new form answers ({len(known)} reused from cache)")
+        vectors = await embed_documents([free_text[h] for h in to_embed])
+        known.update(zip(to_embed, vectors))
+
+    # ---- upsert ------------------------------------------------------------
+    counts = {"forms": len(forms), "responses": 0, "answers": 0, "embedded": len(to_embed)}
+
+    with session_for_org(org_id) as session:
+        for form_id, name in forms.items():
+            existing = session.query(FormDefinition).filter_by(org_id=org_id, form_id=form_id).first()
+            if existing:
+                existing.name = name
+                existing.synced_at = func.now()
+            else:
+                session.add(FormDefinition(org_id=org_id, form_id=form_id, name=name, provider="tally"))
+
+        for (form_id, question_id), q in questions.items():
+            existing = (
+                session.query(FormQuestion)
+                .filter_by(org_id=org_id, form_id=form_id, question_id=question_id)
+                .first()
+            )
+            if existing:
+                existing.label = q["label"]
+                existing.kind = q["kind"]
+                existing.raw_type = q["raw_type"]
+                existing.position = q["position"]
+            else:
+                session.add(FormQuestion(
+                    org_id=org_id, form_id=form_id, question_id=question_id,
+                    label=q["label"], kind=q["kind"], raw_type=q["raw_type"], position=q["position"],
+                ))
+        session.commit()
+
+        for sub in submissions:
+            response = (
+                session.query(FormResponse)
+                .filter_by(org_id=org_id, form_id=sub["form_id"], external_id=sub["external_id"])
+                .first()
+            )
+            if not response:
+                response = FormResponse(
+                    org_id=org_id, form_id=sub["form_id"], external_id=sub["external_id"]
+                )
+                session.add(response)
+
+            response.respondent_id = sub["respondent_id"]
+            response.submitted_at = sub["submitted_at"]
+            response.is_completed = sub["is_completed"]
+            response.doc_id = sub["doc_id"]
+            session.flush()  # need response.id for the answer rows
+
+            # Replace this submission's answers wholesale — a respondent editing
+            # an answer must not leave the previous value behind.
+            session.query(FormAnswer).filter_by(response_id=response.id).delete()
+
+            for a in sub["answers"]:
+                text_hash = (
+                    _answer_hash(a["answer_text"])
+                    if a["kind"] in EMBEDDABLE_KINDS and a["answer_text"]
+                    else None
+                )
+                session.add(FormAnswer(
+                    org_id=org_id,
+                    response_id=response.id,
+                    form_id=sub["form_id"],
+                    question_id=a["question_id"],
+                    kind=a["kind"],
+                    answer_text=a["answer_text"],
+                    answer_numeric=a["answer_numeric"],
+                    answer_choices=a["answer_choices"],
+                    raw_value=a["raw_value"],
+                    embedding=known.get(text_hash) if text_hash else None,
+                    text_hash=text_hash,
+                ))
+                counts["answers"] += 1
+
+            counts["responses"] += 1
+
+        # Response counts per form, now that the rows exist.
+        for form_id in forms:
+            total = session.query(FormResponse).filter_by(org_id=org_id, form_id=form_id).count()
+            form = session.query(FormDefinition).filter_by(org_id=org_id, form_id=form_id).first()
+            if form:
+                form.response_count = total
+
+        session.commit()
+
+    print(
+        f"  Structured store: {counts['forms']} forms, {counts['responses']} responses, "
+        f"{counts['answers']} answers, {counts['embedded']} newly embedded"
+    )
+    return counts
+
+
 def create_ingest_job(org_id: str, trigger: str = "manual") -> str:
     """Open a "running" ingest_jobs row and return its id.
 
@@ -621,6 +896,11 @@ async def run_ingestion(
         # Google Doc or Notion page across tenants) never collide on doc_id.
         for doc in docs:
             doc["doc_id"] = namespaced_doc_id(doc["source_type"], org_id, doc["doc_id"])
+            # Loaders build the structured payload before namespacing (they have
+            # no org context), so carry the final id across — otherwise
+            # form_responses.doc_id points at an id `documents` never stores.
+            if doc.get("structured"):
+                doc["structured"]["doc_id"] = doc["doc_id"]
 
         all_chunks = []
         for doc in docs:
@@ -656,6 +936,10 @@ async def run_ingestion(
                 upserted += 1
 
             session.commit()
+
+        # Dual-write: the same submissions again as rows, for aggregates. Kept
+        # after the chunk commit so a failure here cannot cost the RAG index.
+        await persist_form_submissions(org_id, docs)
     except Exception as exc:
         _finish("failed", error=str(exc))
         raise
