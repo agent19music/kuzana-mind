@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -291,11 +292,56 @@ class FormAnswer(Base):
     raw_value      = Column(JSONB)
     embedding      = Column(Vector(768))
     text_hash      = Column(String)
+    sentiment      = Column(String)   # "positive" | "negative" | "neutral"
     created_at     = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("response_id", "question_id", name="uq_form_answers_response_question"),
         Index("ix_form_answers_org_form_question", "org_id", "form_id", "question_id"),
+    )
+
+
+class FormTheme(Base):
+    """A cluster of semantically similar free-text answers to one question,
+    with an LLM-written label and a cached sentiment split. `centroid` is the
+    mean of member embeddings and the target for incremental assignment."""
+    __tablename__ = "form_themes"
+
+    id                 = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id             = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    form_id            = Column(String, nullable=False)
+    question_id        = Column(String, nullable=False)
+    label              = Column(String)
+    summary            = Column(Text)
+    size               = Column(Integer, default=0)
+    centroid           = Column(Vector(768))
+    assign_cutoff      = Column(Float)     # cutoff this theme was clustered under
+    sentiment_positive = Column(Integer, default=0)
+    sentiment_negative = Column(Integer, default=0)
+    sentiment_neutral  = Column(Integer, default=0)
+    labelled_at        = Column(DateTime(timezone=True))
+    created_at         = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at         = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_form_themes_org_form_question", "org_id", "form_id", "question_id"),
+    )
+
+
+class FormAnswerTheme(Base):
+    """Which theme an answer belongs to. The unique constraint on answer_id is
+    what makes re-assignment an upsert instead of a duplicate."""
+    __tablename__ = "form_answer_themes"
+
+    id        = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id    = Column(String, ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"), nullable=False)
+    answer_id = Column(UUID, ForeignKey("form_answers.id", ondelete="CASCADE"), nullable=False)
+    theme_id  = Column(UUID, ForeignKey("form_themes.id", ondelete="CASCADE"), nullable=False)
+    distance  = Column(Float)
+
+    __table_args__ = (
+        UniqueConstraint("answer_id", name="uq_form_answer_themes_answer"),
+        Index("ix_form_answer_themes_theme", "org_id", "theme_id"),
     )
 
 
