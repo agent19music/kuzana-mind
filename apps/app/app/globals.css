@@ -370,11 +370,11 @@
   }
 }
 
-/* Destructive — solid red. For actions that can't be undone. */
+/* Destructive — solid red (#FC393E). For actions that can't be undone. */
 .btn-destructive {
   background-image:
     linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
-    linear-gradient(180deg, #ef4444, #dc2626 65%);
+    linear-gradient(180deg, #fd5459, #fc393e 65%);
   background-size: 200% 100%, 100% 100%;
   background-position: 150% 0, 0 0;
   color: #fff;
@@ -382,18 +382,18 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.3),
     inset 0 -1px 0 rgba(0, 0, 0, 0.15),
-    0 1px 2px rgba(220, 38, 38, 0.3);
+    0 1px 2px rgba(252, 57, 62, 0.3);
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-destructive:not(:disabled):hover {
     background-image:
       linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
-      linear-gradient(180deg, #f65b5b, #c81e1e 65%);
+      linear-gradient(180deg, #ff6b6f, #e42328 65%);
     background-position: -50% 0, 0 0;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.4),
       inset 0 -1px 0 rgba(0, 0, 0, 0.18),
-      0 4px 14px rgba(220, 38, 38, 0.4);
+      0 4px 14px rgba(252, 57, 62, 0.4);
   }
 }
 
@@ -401,13 +401,13 @@
    For lower-severity destructive actions (e.g. replacing existing setup). */
 .btn-destructive-subtle {
   background: #fff;
-  color: #b91c1c;
-  border-color: #fecaca;
+  color: #c81e24;
+  border-color: #ffcdcf;
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-destructive-subtle:not(:disabled):hover {
-    background: #b91c1c;
-    border-color: #b91c1c;
+    background: #fc393e;
+    border-color: #fc393e;
     color: #fff;
   }
 }
