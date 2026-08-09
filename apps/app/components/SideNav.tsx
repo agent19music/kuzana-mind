@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/Button";
 
 import {
   House,
@@ -194,19 +195,10 @@ export default function SideNav({ mobileOpen = false, onMobileClose }: { mobileO
         </div>
 
         {/* Trigger */}
-        <button
+        <Button
           onClick={() => setMenuOpen(o => !o)}
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            gap: 9,
-            padding: "11px 14px 11px 20px",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
+          variant="ghost"
+          style={{ width: "100%", justifyContent: "flex-start", gap: 9, padding: "11px 14px 11px 20px", textAlign: "left" }}
         >
           <OrgAvatar imageUrl={organization?.imageUrl} name={organization?.name} />
           <span style={{
@@ -230,7 +222,7 @@ export default function SideNav({ mobileOpen = false, onMobileClose }: { mobileO
           }}>
             {I.chevUp}
           </span>
-        </button>
+        </Button>
       </div>
     </nav>
   );

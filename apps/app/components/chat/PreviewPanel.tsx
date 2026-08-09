@@ -5,6 +5,7 @@ import { X } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
 import PdfPreview from "./PdfPreview";
 import DocxPreview from "./DocxPreview";
+import { Button } from "../Button";
 
 type PreviewData =
   | { mode: "text"; title: string | null; content: string }
@@ -136,26 +137,15 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
           >
             {data?.title ?? "Preview"}
           </h2>
-          <button
+          <Button
             type="button"
             onClick={onClose}
-            className="btn-pill"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              color: "#999",
-              flexShrink: 0,
-            }}
+            variant="ghost"
+            size="icon"
+            style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0 }}
           >
             <X size={16} />
-          </button>
+          </Button>
         </div>
 
         <div style={{ padding: "20px 24px", overflowY: "auto" }}>

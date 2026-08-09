@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "../../../components/Button";
 
 type Member = {
   id: string;
@@ -82,23 +83,13 @@ function InviteForm() {
           <option value="org:admin">Admin</option>
         </select>
       </div>
-      <button
+      <Button
         type="submit"
         disabled={state === "loading"}
-        style={{
-          fontSize: 14,
-          color: state === "loading" ? "#a3a3a3" : "#ffffff",
-          background: state === "loading" ? "#e5e5e5" : "#1a1a1a",
-          border: "none",
-          borderRadius: 8,
-          padding: "10px 20px",
-          cursor: state === "loading" ? "not-allowed" : "pointer",
-          transition: "background 150ms",
-          whiteSpace: "nowrap",
-        }}
+        variant="primary-dark"
       >
         {state === "loading" ? "Sending…" : "Send invite"}
-      </button>
+      </Button>
       {message && (
         <p
           style={{

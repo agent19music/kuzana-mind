@@ -7,6 +7,7 @@ import {
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
+import { Button } from "@/components/Button";
 
 export type QueueStatus = "queued" | "uploading" | "done" | "chunk_failed" | "upload_failed";
 
@@ -82,21 +83,6 @@ function StatusDot({ status }: { status: QueueStatus }) {
   );
 }
 
-const actionBtnStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 400,
-  color: "#1a1a1a",
-  background: "#fff",
-  border: "1px solid #e5e5e5",
-  borderRadius: 9999,
-  padding: "5px 12px",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 5,
-  cursor: "pointer",
-  flexShrink: 0,
-};
-
 type Props = {
   items: QueueItem[];
   onRetry: (id: string) => void;
@@ -156,14 +142,14 @@ export default function UploadQueue({ items, onRetry, onDismiss }: Props) {
               </p>
             </div>
             {item.status === "chunk_failed" && (
-              <button type="button" className="btn-pill" onClick={() => onRetry(item.id)} style={actionBtnStyle}>
+              <Button type="button" variant="secondary" size="sm" full onClick={() => onRetry(item.id)} style={{ flexShrink: 0 }}>
                 <ArrowClockwise size={12} /> Retry
-              </button>
+              </Button>
             )}
             {item.status === "upload_failed" && (
-              <button type="button" className="btn-pill" onClick={() => onDismiss(item.id)} style={actionBtnStyle}>
+              <Button type="button" variant="secondary" size="sm" full onClick={() => onDismiss(item.id)} style={{ flexShrink: 0 }}>
                 <X size={12} /> Remove
-              </button>
+              </Button>
             )}
           </motion.div>
         ))}

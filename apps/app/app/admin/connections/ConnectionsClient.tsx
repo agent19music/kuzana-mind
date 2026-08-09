@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/Button";
 import type { ConnectorState } from "./page";
 
 type Status = "connected" | "partial" | "disconnected" | "syncing" | "error" | "soon";
@@ -83,6 +84,18 @@ const STATUS_CONFIG: Record<Status, { label: string; dot: string; bg: string; te
   soon: { label: "Coming soon", dot: "#c4b5fd", bg: "#f5f3ff", text: "#7c3aed" },
 };
 
+// Row order: anything already wired up (even if its last run had trouble)
+// outranks connectors that still need setup, which outrank ones that aren't
+// buildable yet — so the sources actually in use surface first.
+const STATUS_RANK: Record<Status, number> = {
+  connected: 0,
+  syncing: 0,
+  partial: 0,
+  error: 0,
+  disconnected: 1,
+  soon: 2,
+};
+
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
   const then = new Date(iso).getTime();
@@ -131,25 +144,16 @@ function SyncButton({ body, label = "Sync now" }: { body?: Record<string, unknow
     state === "syncing" ? "Syncing…" : state === "done" ? "✓ Done" : state === "error" ? "Retry" : label;
 
   return (
-    <button
+    <Button
       onClick={sync}
       disabled={state === "syncing"}
-      style={{
-        fontSize: 12,
-        color: state === "syncing" ? "#aaa" : state === "error" ? "#b91c1c" : "#444",
-        background: "#fff",
-        border: `1px solid ${state === "error" ? "#fecaca" : "#E2E2E2"}`,
-        borderRadius: 6,
-        padding: "5px 12px",
-        cursor: state === "syncing" ? "not-allowed" : "pointer",
-        fontWeight: 400,
-        transition: "border-color 150ms, color 150ms",
-        whiteSpace: "nowrap",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)",
-      }}
+      variant={state === "error" ? "destructive" : "primary-dark"}
+      size="sm"
+      className="tooltip tooltip-end"
+      data-tooltip="Trigger manual sync instantly"
     >
       {text}
-    </button>
+    </Button>
   );
 }
 
@@ -235,10 +239,10 @@ function ConnectorModal({
   const router = useRouter();
   const spec = CONNECTOR_FIELDS[connectorId];
   const [values, setValues] = useState<Record<string, string>>({});
-  const [state, setState] = useState<"idle" | "saving" | "syncing" | "error">("idle");
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [error, setError] = useState("");
 
-  const busy = state === "saving" || state === "syncing";
+  const busy = state === "saving";
   const ready = spec.fields.every((f) => f.optional || (values[f.key] ?? "").trim());
 
   async function save() {
@@ -260,28 +264,9 @@ function ConnectorModal({
       });
       if (!res.ok) throw new Error((await res.text()) || "Could not save");
 
-      // Credentials are saved at this point, but indexing runs in the
-      // background. Hold the modal open until the run settles so the user sees
-      // the outcome here instead of closing onto a stale "Not connected" row.
-      const { job_id: jobId } = await res.json();
-      if (jobId) {
-        setState("syncing");
-        const outcome = await waitForJob(jobId);
-
-        if (outcome.status === "failed") {
-          setError(outcome.error || "The sync failed. Check the credentials and try again.");
-          setState("error");
-          router.refresh();
-          return;
-        }
-        if (outcome.status === "timeout") {
-          // Still indexing — closing is safe, the row picks it up on next load.
-          router.refresh();
-          onClose();
-          return;
-        }
-      }
-
+      // Credentials are saved and the sync job has started in the background.
+      // Close right away instead of blocking here — the connections list shows
+      // its own "Syncing" state per row, so there's nowhere useful to wait.
       router.refresh();
       onClose();
     } catch (err) {
@@ -330,27 +315,15 @@ function ConnectorModal({
           <h2 style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
             {spec.title}
           </h2>
-          <button
+          <Button
             onClick={onClose}
             aria-label="Close"
-            className="btn-press"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 20,
-              color: "#ccc",
-              lineHeight: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 44,
-              height: 44,
-              borderRadius: 8,
-            }}
+            variant="ghost"
+            size="icon"
+            style={{ fontSize: 20, color: "#ccc", lineHeight: 1, width: 44, height: 44 }}
           >
             ×
-          </button>
+          </Button>
         </div>
 
         <div style={{ padding: "20px 28px 24px" }}>
@@ -372,7 +345,7 @@ function ConnectorModal({
           </p>
 
           {configured && (
-            <p style={{ fontSize: 12.5, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", margin: "0 0 20px", lineHeight: 1.5 }}>
+            <p className="notice notice-warning" style={{ margin: "0 0 20px" }}>
               Already connected. Saving replaces the stored credentials and re-indexes.
             </p>
           )}
@@ -414,40 +387,12 @@ function ConnectorModal({
           )}
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
-            <button
-              onClick={onClose}
-              className="btn-press"
-              style={{
-                fontSize: 13.5,
-                color: "#888",
-                background: "none",
-                border: "1px solid transparent",
-                borderRadius: 8,
-                padding: "10px 18px",
-                cursor: "pointer",
-                fontWeight: 400,
-              }}
-            >
-              {state === "syncing" ? "Close and keep syncing" : "Cancel"}
-            </button>
-            <button
-              onClick={save}
-              disabled={!ready || busy}
-              className="btn-press"
-              style={{
-                fontSize: 13.5,
-                color: "#fff",
-                background: !ready || busy ? "#bbb" : "#111",
-                border: "none",
-                borderRadius: 8,
-                padding: "10px 20px",
-                cursor: !ready || busy ? "not-allowed" : "pointer",
-                fontWeight: 400,
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
-              }}
-            >
-              {state === "saving" ? "Saving…" : state === "syncing" ? "Indexing…" : "Save and sync"}
-            </button>
+            <Button onClick={onClose} variant="ghost">
+              Cancel
+            </Button>
+            <Button onClick={save} disabled={!ready || busy} variant="primary-dark">
+              {state === "saving" ? "Saving…" : "Save and sync"}
+            </Button>
           </div>
         </div>
       </div>
@@ -488,47 +433,43 @@ function NotifyButton({ integration, initiallyNotified }: { integration: string;
     state === "loading" ? "Saving…" : state === "done" ? "✓ Noted" : state === "error" ? "Retry" : "Notify me";
 
   return (
-    <button
+    <Button
       onClick={notify}
       disabled={state === "loading" || state === "done"}
-      style={{
-        fontSize: 12,
-        color: state === "done" ? "#22c55e" : state === "error" ? "#b91c1c" : "#7c3aed",
-        background: "none",
-        border: `1px solid ${state === "done" ? "#86efac" : state === "error" ? "#fecaca" : "#ddd6fe"}`,
-        borderRadius: 6,
-        padding: "5px 12px",
-        cursor: state === "loading" || state === "done" ? "not-allowed" : "pointer",
-        fontWeight: 400,
-      }}
+      variant={state === "error" ? "destructive" : "accent-solid"}
+      size="sm"
     >
       {label}
-    </button>
+    </Button>
   );
 }
 
 // Opens the connector's setup modal. Styled to match the plain action links it
-// replaced, so the row layout stays a single button per connector.
-function ConfigureButton({ label, onClick }: { label: string; onClick: () => void }) {
+// replaced, so the row layout stays a single button per connector. Once a
+// connector already has credentials, re-opening this modal replaces them —
+// destructive styling plus a tooltip make that consequence visible before the
+// click, instead of only inside the modal's warning copy.
+function ConfigureButton({
+  label,
+  destructive,
+  tooltip,
+  onClick,
+}: {
+  label: string;
+  destructive?: boolean;
+  tooltip?: string;
+  onClick: () => void;
+}) {
   return (
-    <button
+    <Button
       onClick={onClick}
-      className="btn-press"
-      style={{
-        fontSize: 12,
-        color: "#444",
-        background: "#fff",
-        border: "1px solid #E2E2E2",
-        borderRadius: 6,
-        padding: "5px 12px",
-        cursor: "pointer",
-        fontWeight: 400,
-        whiteSpace: "nowrap",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)",
-      }}
+      variant={destructive ? "destructive" : "primary-dark"}
+      size="sm"
+      className={tooltip ? "tooltip tooltip-end" : undefined}
+      data-tooltip={tooltip}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -543,6 +484,7 @@ export default function ConnectionsClient({
   notifiedIntegrations: string[];
   connectors: Record<string, ConnectorState>;
 }) {
+  const router = useRouter();
   const [configuring, setConfiguring] = useState<string | null>(null);
 
   const lastSynced = stats?.last_synced ?? null;
@@ -580,7 +522,7 @@ export default function ConnectionsClient({
       description: "Sync pages and databases from your Notion workspace.",
       status: stateFor("notion").status,
       meta: metaFor("notion", "Not set up · needs an integration token and root page"),
-      actionLabel: "Configure",
+      actionLabel: stateFor("notion").configured ? "Reconfigure" : "Configure",
       syncable: stateFor("notion").configured,
       logo: <NotionLogo />,
     },
@@ -600,7 +542,7 @@ export default function ConnectionsClient({
       description: "Pull form and survey responses so staff can ask about the feedback they've received.",
       status: stateFor("tally").status,
       meta: metaFor("tally", "Not set up · needs an API key and form ids"),
-      actionLabel: "Configure",
+      actionLabel: stateFor("tally").configured ? "Reconfigure" : "Configure",
       syncable: stateFor("tally").configured,
       logo: <Image src="/icons/tally.svg" alt="Tally" width={22} height={22} />,
     },
@@ -640,6 +582,23 @@ export default function ConnectionsClient({
     },
   ];
 
+  // Stable sort (native Array#sort since ES2019) — connectors keep their
+  // relative order within a rank, only the groups themselves move.
+  const orderedConnections = [...CONNECTIONS].sort(
+    (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]
+  );
+
+  // The config modal now closes as soon as a sync job starts, instead of
+  // waiting for it to finish — so nothing else refetches server data once the
+  // job actually completes. Poll while any row is "syncing" so the row clears
+  // itself back to "Connected" without a manual reload.
+  const anySyncing = CONNECTIONS.some((c) => c.status === "syncing");
+  useEffect(() => {
+    if (!anySyncing) return;
+    const id = setInterval(() => router.refresh(), POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [anySyncing, router]);
+
   return (
     <>
       {/* Live summary — real backend data, replaces the old hardcoded meta */}
@@ -678,17 +637,7 @@ export default function ConnectionsClient({
       </div>
 
       {latestJob?.status === "failed" && latestJob.error && (
-        <div
-          style={{
-            padding: "10px 16px",
-            marginBottom: 20,
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: 8,
-            fontSize: 12,
-            color: "#b91c1c",
-          }}
-        >
+        <div className="notice notice-danger" style={{ marginBottom: 20 }}>
           Last sync failed: {latestJob.error}
         </div>
       )}
@@ -698,11 +647,10 @@ export default function ConnectionsClient({
           background: "#fff",
           border: "1px solid #E8E8E8",
           borderRadius: 12,
-          overflow: "hidden",
           boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
         }}
       >
-        {CONNECTIONS.map((conn, i) => {
+        {orderedConnections.map((conn, i) => {
           const s = STATUS_CONFIG[conn.status];
           return (
             <div
@@ -712,7 +660,7 @@ export default function ConnectionsClient({
                 alignItems: "center",
                 gap: 20,
                 padding: "20px 24px",
-                borderBottom: i < CONNECTIONS.length - 1 ? "1px solid #F3F3F3" : "none",
+                borderBottom: i < orderedConnections.length - 1 ? "1px solid #F3F3F3" : "none",
                 opacity: conn.status === "soon" ? 0.7 : 1,
               }}
             >
@@ -764,31 +712,35 @@ export default function ConnectionsClient({
 
               {/* Actions */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                {conn.syncable && <SyncButton />}
-                {conn.status === "soon" ? (
-                  <NotifyButton
-                    integration={conn.id}
-                    initiallyNotified={notifiedIntegrations.includes(conn.id)}
-                  />
-                ) : CONNECTOR_FIELDS[conn.id] ? (
-                  <ConfigureButton label={conn.actionLabel} onClick={() => setConfiguring(conn.id)} />
+                {conn.status === "syncing" ? (
+                  // A job is running for this org. Configure/Sync are hidden rather
+                  // than just disabled, so there's nothing to click while indexing
+                  // is in flight — the row itself is the loading state.
+                  <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "#1d4ed8" }}>
+                    <span className="spinner" />
+                    Syncing…
+                  </span>
                 ) : (
-                  <a
-                    href={conn.actionHref ?? "#"}
-                    style={{
-                      fontSize: 12,
-                      color: "#444",
-                      background: "#fff",
-                      border: "1px solid #E2E2E2",
-                      borderRadius: 6,
-                      padding: "5px 12px",
-                      textDecoration: "none",
-                      fontWeight: 400,
-                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.06)",
-                    }}
-                  >
-                    {conn.actionLabel}
-                  </a>
+                  <>
+                    {conn.syncable && <SyncButton />}
+                    {conn.status === "soon" ? (
+                      <NotifyButton
+                        integration={conn.id}
+                        initiallyNotified={notifiedIntegrations.includes(conn.id)}
+                      />
+                    ) : CONNECTOR_FIELDS[conn.id] ? (
+                      <ConfigureButton
+                        label={conn.actionLabel}
+                        destructive={conn.syncable}
+                        tooltip={conn.syncable ? "Replaces the current setup and re-indexes" : undefined}
+                        onClick={() => setConfiguring(conn.id)}
+                      />
+                    ) : (
+                      <Button href={conn.actionHref ?? "#"} variant="secondary" size="sm">
+                        {conn.actionLabel}
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

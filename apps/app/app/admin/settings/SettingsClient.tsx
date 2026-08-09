@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState } from "react";
 import { ArrowRight, Camera, PencilSimple } from "@phosphor-icons/react";
 import FileUploadCard from "./FileUploadCard";
+import { Button } from "../../../components/Button";
 
 const arrowIcon = <ArrowRight size={14} />;
 const cameraIcon = <Camera size={18} />;
@@ -174,38 +174,24 @@ function InlineNameEdit({ initialName }: { initialName: string }) {
             onFocus={(e) => (e.target.style.borderColor = "#1a1a1a")}
             onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
           />
-          <button
+          <Button
             onClick={save}
             disabled={saving}
-            className="btn-pill"
-            style={{
-              fontSize: 13,
-              color: saving ? "#a3a3a3" : "#1a1a1a",
-              background: "#fff",
-              border: "1px solid #e5e5e5",
-              borderRadius: 9999,
-              padding: "6px 14px",
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
+            variant="secondary"
+            size="sm"
+            full
           >
             {saving ? "Saving…" : "Save"}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={cancel}
             disabled={saving}
-            className="btn-pill"
-            style={{
-              fontSize: 13,
-              color: "#a3a3a3",
-              background: "none",
-              border: "1px solid transparent",
-              borderRadius: 9999,
-              padding: "6px 14px",
-              cursor: "pointer",
-            }}
+            variant="ghost"
+            size="sm"
+            full
           >
             Cancel
-          </button>
+          </Button>
         </div>
         {error && <p style={{ fontSize: 13, color: "#e05a5a", margin: 0 }}>{error}</p>}
       </div>
@@ -268,24 +254,14 @@ export default function SettingsClient({
               <p style={{ fontSize: 15, color: "#6b6b6b", margin: 0, lineHeight: 1.55 }}>
                 Manage your Notion, Google Docs, and Drive integrations — and trigger a manual sync.
               </p>
-              <Link
+              <Button
                 href="/admin/connections"
-                className="btn-pill"
-                style={{
-                  alignSelf: "flex-start",
-                  fontSize: 14,
-                  color: "#1a1a1a",
-                  border: "1px solid #e5e5e5",
-                  borderRadius: 9999,
-                  padding: "7px 18px",
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
+                variant="secondary"
+                full
+                style={{ alignSelf: "flex-start" }}
               >
                 Manage connections {arrowIcon}
-              </Link>
+              </Button>
             </div>
           </Row>
         </div>
