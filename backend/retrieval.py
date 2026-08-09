@@ -4,7 +4,8 @@ from sqlalchemy import text
 
 from database import session_for_org
 from embeddings import embed_query
-from generation import condense_question, synthesize_answer
+from form_insights import build_breakdown, match_form_question
+from generation import condense_question, synthesize_answer, synthesize_form_answer
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.65"))
 
@@ -56,6 +57,27 @@ async def answer_query(
     # so retrieval finds the right chunk ("how much notice?" → "...for leave?").
     search_query = await condense_question(query, history)
     query_embedding = await embed_query(search_query)
+
+    # A query about a form question ("what's the most common X", "how do people
+    # feel about Y") needs the population, not the one submission a plain
+    # top-1 document match would happen to return. Check this first: it's a
+    # stricter, more specific match than document search, so a hit here is
+    # trusted over whatever document search would have found.
+    form_question = await match_form_question(query_embedding, org_id)
+    if form_question:
+        breakdown = build_breakdown(org_id, form_question)
+        if breakdown:
+            answer = await synthesize_form_answer(query, form_question["label"], breakdown, history)
+            return {
+                "answer": answer,
+                "type": "document",
+                "source_title": f"{form_question['form_name']} · {form_question['label']}",
+                "source_doc_id": None,
+                "source_type": "tally",
+                "source_excerpt": breakdown[:500],
+                "similarity_score": round(form_question["score"], 4),
+            }
+
     results = await similarity_search(query_embedding, org_id=org_id)
 
     if results and results[0]["similarity_score"] >= SIMILARITY_THRESHOLD:

@@ -704,21 +704,43 @@ async def persist_form_submissions(org_id: str, docs: list[dict]) -> dict:
             else:
                 session.add(FormDefinition(org_id=org_id, form_id=form_id, name=name, provider="tally"))
 
-        for (form_id, question_id), q in questions.items():
-            existing = (
-                session.query(FormQuestion)
-                .filter_by(org_id=org_id, form_id=form_id, question_id=question_id)
-                .first()
-            )
+        existing_questions = {
+            (q.form_id, q.question_id): q
+            for q in session.query(FormQuestion).filter(FormQuestion.org_id == org_id).all()
+        }
+
+        # Embed a question's label once, so a chat query can later be matched to
+        # the question it's about (see form_insights.match_form_question). Only
+        # new questions and ones whose label changed or never got an embedding
+        # pay for a re-embed — a form's question set rarely changes sync to sync.
+        to_embed: dict[tuple[str, str], str] = {}
+        for key, q in questions.items():
+            existing = existing_questions.get(key)
+            if q["label"] and (existing is None or existing.label != q["label"] or existing.embedding is None):
+                to_embed[key] = q["label"]
+
+        label_vectors: dict[tuple[str, str], list[float]] = {}
+        if to_embed:
+            keys = list(to_embed)
+            vectors = await embed_documents([to_embed[k] for k in keys])
+            label_vectors = dict(zip(keys, vectors))
+
+        for key, q in questions.items():
+            form_id, question_id = key
+            existing = existing_questions.get(key)
+            vector = label_vectors.get(key)
             if existing:
                 existing.label = q["label"]
                 existing.kind = q["kind"]
                 existing.raw_type = q["raw_type"]
                 existing.position = q["position"]
+                if vector is not None:
+                    existing.embedding = vector
             else:
                 session.add(FormQuestion(
                     org_id=org_id, form_id=form_id, question_id=question_id,
                     label=q["label"], kind=q["kind"], raw_type=q["raw_type"], position=q["position"],
+                    embedding=vector,
                 ))
         session.commit()
 
