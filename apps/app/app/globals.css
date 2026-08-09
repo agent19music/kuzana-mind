@@ -220,36 +220,31 @@
 .btn-icon.btn-sm { width: 28px; height: 28px; }
 .btn-full { border-radius: 9999px; }
 
-/* Shine sweep — the hover "comes alive" animation on filled variants. A
-   soft diagonal highlight slides across on top of the resting sheen.
-   Guarded the same way as the lift above: fine-pointer hover only. */
-.btn-primary, .btn-primary-dark, .btn-destructive, .btn-accent-solid {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-.btn-primary::before, .btn-primary-dark::before, .btn-destructive::before, .btn-accent-solid::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%);
-  background-size: 200% 100%;
-  background-position: 150% 0;
-  pointer-events: none;
-}
+/* Shine sweep — the hover "comes alive" animation on filled variants. A soft
+   diagonal highlight slides across on top of the resting sheen.
+   Implemented as a second background-image layer (not a ::before) for two
+   reasons: (1) background-image already clips to the border-radius via the
+   default border-box background-clip, so no overflow:hidden is needed on the
+   button itself; (2) a ::before here would collide with .tooltip's own
+   ::before (the arrow) on any button that is also a tooltip trigger — with
+   overflow:hidden added on top, that combination silently clipped the whole
+   tooltip. Every filled variant below sets `background` as two comma-
+   separated layers: the sweep gradient first, the actual color second. */
 @media (hover: hover) and (pointer: fine) {
-  .btn-primary:not(:disabled):hover::before,
-  .btn-primary-dark:not(:disabled):hover::before,
-  .btn-destructive:not(:disabled):hover::before,
-  .btn-accent-solid:not(:disabled):hover::before {
-    transition: background-position 550ms cubic-bezier(0.2, 0, 0, 1);
-    background-position: -50% 0;
+  .btn-primary, .btn-primary-dark, .btn-destructive, .btn-accent-solid {
+    transition: background-position 550ms cubic-bezier(0.2, 0, 0, 1),
+      box-shadow 200ms cubic-bezier(0.2, 0, 0, 1),
+      transform 150ms cubic-bezier(0.2, 0, 0, 1);
   }
 }
 
 /* Primary — blue. The Cloudflare "Add domain" treatment. */
 .btn-primary {
-  background: linear-gradient(180deg, #3b82f6, #2563eb 65%);
+  background-image:
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+    linear-gradient(180deg, #3b82f6, #2563eb 65%);
+  background-size: 200% 100%, 100% 100%;
+  background-position: 150% 0, 0 0;
   color: #fff;
   border-color: rgba(0, 0, 0, 0.1);
   box-shadow:
@@ -259,7 +254,10 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-primary:not(:disabled):hover {
-    background: linear-gradient(180deg, #4c8cff, #2f6bf0 65%);
+    background-image:
+      linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+      linear-gradient(180deg, #4c8cff, #2f6bf0 65%);
+    background-position: -50% 0, 0 0;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.4),
       inset 0 -1px 0 rgba(0, 0, 0, 0.18),
@@ -269,7 +267,11 @@
 
 /* Primary, dark — black. The team/billing "Send invite" / "Upgrade" treatment. */
 .btn-primary-dark {
-  background: linear-gradient(180deg, #2c2c2c, #111 65%);
+  background-image:
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+    linear-gradient(180deg, #2c2c2c, #111 65%);
+  background-size: 200% 100%, 100% 100%;
+  background-position: 150% 0, 0 0;
   color: #fff;
   border-color: rgba(0, 0, 0, 0.4);
   box-shadow:
@@ -279,7 +281,10 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-primary-dark:not(:disabled):hover {
-    background: linear-gradient(180deg, #3a3a3a, #1a1a1a 65%);
+    background-image:
+      linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+      linear-gradient(180deg, #3a3a3a, #1a1a1a 65%);
+    background-position: -50% 0, 0 0;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.18),
       inset 0 -1px 0 rgba(0, 0, 0, 0.35),
@@ -340,7 +345,11 @@
    other filled variants. For "coming soon" opt-in actions where the resting
    state should read as inviting, not a muted outline. */
 .btn-accent-solid {
-  background: linear-gradient(180deg, #9061f9, #7c3aed 65%);
+  background-image:
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+    linear-gradient(180deg, #9061f9, #7c3aed 65%);
+  background-size: 200% 100%, 100% 100%;
+  background-position: 150% 0, 0 0;
   color: #fff;
   border-color: rgba(0, 0, 0, 0.1);
   box-shadow:
@@ -350,7 +359,10 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-accent-solid:not(:disabled):hover {
-    background: linear-gradient(180deg, #a276fb, #6d28d9 65%);
+    background-image:
+      linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+      linear-gradient(180deg, #a276fb, #6d28d9 65%);
+    background-position: -50% 0, 0 0;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.4),
       inset 0 -1px 0 rgba(0, 0, 0, 0.18),
@@ -360,7 +372,11 @@
 
 /* Destructive — solid red. For actions that can't be undone. */
 .btn-destructive {
-  background: linear-gradient(180deg, #ef4444, #dc2626 65%);
+  background-image:
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+    linear-gradient(180deg, #ef4444, #dc2626 65%);
+  background-size: 200% 100%, 100% 100%;
+  background-position: 150% 0, 0 0;
   color: #fff;
   border-color: rgba(0, 0, 0, 0.1);
   box-shadow:
@@ -370,7 +386,10 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .btn-destructive:not(:disabled):hover {
-    background: linear-gradient(180deg, #f65b5b, #c81e1e 65%);
+    background-image:
+      linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 48%, transparent 66%),
+      linear-gradient(180deg, #f65b5b, #c81e1e 65%);
+    background-position: -50% 0, 0 0;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.4),
       inset 0 -1px 0 rgba(0, 0, 0, 0.18),
