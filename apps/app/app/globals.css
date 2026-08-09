@@ -213,11 +213,18 @@
   .btn:not(:disabled):hover { transform: none; }
 }
 
-/* Sizes */
+/* Sizes — the only widths/heights/font-sizes a button should ever need.
+   Every button in the app must pick one of these via `size`, never hand-roll
+   pixel values in a local `style` — that's what made chat/onboarding/modals
+   drift into visibly different button dimensions despite sharing this same
+   component. `.btn-icon` is 40px (this project's stated desktop minimum hit
+   area); `.btn-icon-lg` is 44px for anything also reachable on touch (modal
+   dismiss, mobile nav toggles). */
 .btn-sm { padding: 5px 12px; font-size: 12px; gap: 5px; border-radius: 6px; }
 .btn-lg { padding: 11px 22px; font-size: 14.5px; }
-.btn-icon { padding: 0; width: 36px; height: 36px; }
+.btn-icon { padding: 0; width: 40px; height: 40px; }
 .btn-icon.btn-sm { width: 28px; height: 28px; }
+.btn-icon-lg { padding: 0; width: 44px; height: 44px; }
 .btn-full { border-radius: 9999px; }
 
 /* Shine sweep — the hover "comes alive" animation on filled variants. A soft

@@ -388,8 +388,8 @@ export default function OnboardingPage() {
               type="submit"
               disabled={submitting || (!hasExistingOrg && !orgName.trim())}
               variant="primary-dark"
+              size="lg"
               full
-              style={{ height: 52, fontSize: 15 }}
             >
               {submitting
                 ? hasExistingOrg

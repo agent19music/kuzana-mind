@@ -242,12 +242,7 @@ export default function ChatClient() {
           }}
         >
           <div style={{ padding: "var(--space-4)", flexShrink: 0 }}>
-            <Button
-              onClick={newChat}
-              variant="primary-dark"
-              full
-              style={{ width: "100%", height: 40, fontSize: 14 }}
-            >
+            <Button onClick={newChat} variant="primary-dark" size="lg" full style={{ width: "100%" }}>
               <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> New chat
             </Button>
           </div>
@@ -371,13 +366,7 @@ export default function ChatClient() {
                     }}
                   >
                     {SUGGESTIONS.map((s) => (
-                      <Button
-                        key={s}
-                        onClick={() => submit(s)}
-                        variant="secondary"
-                        full
-                        style={{ fontSize: 14 }}
-                      >
+                      <Button key={s} onClick={() => submit(s)} variant="secondary" full>
                         {s}
                       </Button>
                     ))}
@@ -498,8 +487,9 @@ export default function ChatClient() {
                 onClick={() => submit(input)}
                 disabled={!input.trim() || loading}
                 variant="primary-dark"
+                size="lg"
                 full
-                style={{ flexShrink: 0, height: 40, padding: "0 20px", fontSize: 14 }}
+                style={{ flexShrink: 0 }}
               >
                 Ask
               </Button>

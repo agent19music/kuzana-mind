@@ -12,7 +12,7 @@ export type ButtonVariant =
   | "destructive"
   | "destructive-subtle";
 
-export type ButtonSize = "default" | "sm" | "lg" | "icon" | "icon-sm";
+export type ButtonSize = "default" | "sm" | "lg" | "icon" | "icon-sm" | "icon-lg";
 
 interface ButtonOwnProps {
   variant?: ButtonVariant;
@@ -36,6 +36,7 @@ const SIZE_CLASS: Record<ButtonSize, string> = {
   lg: "btn-lg",
   icon: "btn-icon",
   "icon-sm": "btn-icon btn-sm",
+  "icon-lg": "btn-icon-lg",
 };
 
 // An in-app route ("/admin/connections") should still get Next's client-side

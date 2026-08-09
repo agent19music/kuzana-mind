@@ -319,8 +319,8 @@ function ConnectorModal({
             onClick={onClose}
             aria-label="Close"
             variant="ghost"
-            size="icon"
-            style={{ fontSize: 20, color: "#ccc", lineHeight: 1, width: 44, height: 44 }}
+            size="icon-lg"
+            style={{ fontSize: 20, color: "#ccc", lineHeight: 1 }}
           >
             ×
           </Button>

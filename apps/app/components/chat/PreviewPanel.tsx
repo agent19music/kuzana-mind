@@ -137,13 +137,7 @@ export default function PreviewPanel({ docId, sourceType, excerpt, onClose }: Pr
           >
             {data?.title ?? "Preview"}
           </h2>
-          <Button
-            type="button"
-            onClick={onClose}
-            variant="ghost"
-            size="icon"
-            style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0 }}
-          >
+          <Button type="button" onClick={onClose} variant="ghost" size="icon" style={{ flexShrink: 0 }}>
             <X size={16} />
           </Button>
         </div>
