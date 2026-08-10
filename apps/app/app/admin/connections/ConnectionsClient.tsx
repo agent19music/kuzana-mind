@@ -239,10 +239,10 @@ function ConnectorModal({
   const router = useRouter();
   const spec = CONNECTOR_FIELDS[connectorId];
   const [values, setValues] = useState<Record<string, string>>({});
-  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [state, setState] = useState<"idle" | "saving" | "syncing" | "error">("idle");
   const [error, setError] = useState("");
 
-  const busy = state === "saving";
+  const busy = state === "saving" || state === "syncing";
   const ready = spec.fields.every((f) => f.optional || (values[f.key] ?? "").trim());
 
   async function save() {
@@ -264,9 +264,27 @@ function ConnectorModal({
       });
       if (!res.ok) throw new Error((await res.text()) || "Could not save");
 
-      // Credentials are saved and the sync job has started in the background.
-      // Close right away instead of blocking here — the connections list shows
-      // its own "Syncing" state per row, so there's nowhere useful to wait.
+      // Credentials are saved at this point, but indexing runs in the
+      // background. Hold the modal open until the run settles so the user sees
+      // the outcome here instead of closing onto a stale "Not connected" row.
+      const { job_id: jobId } = await res.json();
+      if (jobId) {
+        setState("syncing");
+        const outcome = await waitForJob(jobId);
+
+        if (outcome.status === "failed") {
+          setError(outcome.error || "The sync failed. Check the credentials and try again.");
+          setState("error");
+          router.refresh();
+          return;
+        }
+        if (outcome.status === "timeout") {
+          // Still indexing — closing is safe, the row picks it up on next load.
+          router.refresh();
+          onClose();
+          return;
+        }
+      }
       router.refresh();
       onClose();
     } catch (err) {
@@ -388,10 +406,10 @@ function ConnectorModal({
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
             <Button onClick={onClose} variant="ghost">
-              Cancel
+              {state === "syncing" ? "Close and keep syncing" : "Cancel"}
             </Button>
             <Button onClick={save} disabled={!ready || busy} variant="primary-dark">
-              {state === "saving" ? "Saving…" : "Save and sync"}
+              {state === "saving" ? "Saving…" : state === "syncing" ? "Indexing…" : "Save and sync"}
             </Button>
           </div>
         </div>
