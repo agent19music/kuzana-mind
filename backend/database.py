@@ -240,6 +240,10 @@ class FormQuestion(Base):
     kind        = Column(String, nullable=False, default="other")
     raw_type    = Column(String)
     position    = Column(Integer)
+    # Embedding of `label`, so a chat query can be matched to the question it's
+    # about (see retrieval.py / form_insights.py) the same way a query is
+    # matched to a document chunk. Backfilled lazily on the next Tally sync.
+    embedding   = Column(Vector(768))
 
     __table_args__ = (
         UniqueConstraint("org_id", "form_id", "question_id", name="uq_form_questions_org_form_question"),

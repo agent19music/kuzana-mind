@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/Button";
 
 const inputStyle = (focused: boolean): React.CSSProperties => ({
   width: "100%",
@@ -383,22 +384,12 @@ export default function OnboardingPage() {
               </p>
             )}
 
-            <button
+            <Button
               type="submit"
               disabled={submitting || (!hasExistingOrg && !orgName.trim())}
-              style={{
-                height: 52,
-                borderRadius: 9999,
-                background: "var(--foreground)",
-                color: "var(--background)",
-                fontSize: 15,
-                border: "none",
-                cursor: submitting || (!hasExistingOrg && !orgName.trim()) ? "not-allowed" : "pointer",
-                fontFamily: "var(--font-sans)",
-                opacity: submitting || (!hasExistingOrg && !orgName.trim()) ? 0.5 : 1,
-                transition: "opacity 150ms ease-out",
-                letterSpacing: "-0.01em",
-              }}
+              variant="primary-dark"
+              size="lg"
+              full
             >
               {submitting
                 ? hasExistingOrg
@@ -407,7 +398,7 @@ export default function OnboardingPage() {
                 : hasExistingOrg
                   ? hasAnySource ? "Connect sources" : "Skip"
                   : "Create organisation"}
-            </button>
+            </Button>
           </form>
         </div>
       </div>

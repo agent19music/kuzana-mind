@@ -5,6 +5,7 @@ import { ThinkingOrb } from "thinking-orbs";
 import DocumentCard from "../../components/chat/DocumentCard";
 import StaffCard from "../../components/chat/StaffCard";
 import DashboardShell from "../../components/DashboardShell";
+import { Button } from "../../components/Button";
 
 
 const API_URL = "/api";
@@ -241,27 +242,9 @@ export default function ChatClient() {
           }}
         >
           <div style={{ padding: "var(--space-4)", flexShrink: 0 }}>
-            <button
-              onClick={newChat}
-              style={{
-                width: "100%",
-                height: 40,
-                borderRadius: 9999,
-                background: "var(--foreground)",
-                color: "var(--background)",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 400,
-                fontFamily: "var(--font-sans)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-              }}
-            >
+            <Button onClick={newChat} variant="primary-dark" size="lg" full style={{ width: "100%" }}>
               <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> New chat
-            </button>
+            </Button>
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: "0 var(--space-3) var(--space-4)" }}>
@@ -319,24 +302,16 @@ export default function ChatClient() {
                       >
                         {c.title}
                       </span>
-                      <button
+                      <Button
                         className="convo-del"
+                        variant="ghost"
+                        size="icon-sm"
                         onClick={(e) => deleteConversation(c.id, e)}
                         aria-label="Delete conversation"
-                        style={{
-                          flexShrink: 0,
-                          background: "transparent",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "var(--foreground-subtle)",
-                          fontSize: 14,
-                          lineHeight: 1,
-                          padding: 2,
-                          transition: "opacity 150ms ease-out",
-                        }}
+                        style={{ flexShrink: 0 }}
                       >
                         ×
-                      </button>
+                      </Button>
                     </div>
                   );
                 })}
@@ -391,31 +366,9 @@ export default function ChatClient() {
                     }}
                   >
                     {SUGGESTIONS.map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => submit(s)}
-                        style={{
-                          background: "var(--card)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 9999,
-                          padding: "10px 18px",
-                          fontSize: 14,
-                          fontWeight: 400,
-                          color: "var(--foreground-muted)",
-                          cursor: "pointer",
-                          transition: "background 200ms ease-out, border-color 200ms ease-out, color 200ms ease-out",
-                        }}
-                        onMouseEnter={(e) => {
-                          (e.currentTarget as HTMLButtonElement).style.background = "var(--hover-surface)";
-                          (e.currentTarget as HTMLButtonElement).style.color = "var(--foreground)";
-                        }}
-                        onMouseLeave={(e) => {
-                          (e.currentTarget as HTMLButtonElement).style.background = "var(--card)";
-                          (e.currentTarget as HTMLButtonElement).style.color = "var(--foreground-muted)";
-                        }}
-                      >
+                      <Button key={s} onClick={() => submit(s)} variant="secondary" full>
                         {s}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -530,26 +483,16 @@ export default function ChatClient() {
                   lineHeight: 1.5,
                 }}
               />
-              <button
+              <Button
                 onClick={() => submit(input)}
                 disabled={!input.trim() || loading}
-                style={{
-                  flexShrink: 0,
-                  height: 40,
-                  borderRadius: 9999,
-                  background: input.trim() && !loading ? "var(--foreground)" : "var(--inset-surface)",
-                  color: input.trim() && !loading ? "var(--background)" : "var(--foreground-subtle)",
-                  border: "none",
-                  cursor: input.trim() && !loading ? "pointer" : "not-allowed",
-                  padding: "0 20px",
-                  fontSize: 14,
-                  fontWeight: 400,
-                  fontFamily: "var(--font-sans)",
-                  transition: "background 200ms ease-out, color 200ms ease-out",
-                }}
+                variant="primary-dark"
+                size="lg"
+                full
+                style={{ flexShrink: 0 }}
               >
                 Ask
-              </button>
+              </Button>
             </div>
             <p
               style={{

@@ -117,9 +117,22 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
 
 `retrieval.py::answer_query(query, org_id)`:
 1. Embed the query with `RETRIEVAL_QUERY` task type (`embeddings.embed_query`)
-2. Cosine similarity search via pgvector (HNSW index), org-scoped via `session_for_org`
-3. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.75`) → synthesise an answer from the chunk
-4. Else → honest "no documentation on this" response. There used to be a
+2. **Form-question match first** (`form_insights.match_form_question`): cosine
+   similarity between the query embedding and every `form_questions.embedding`
+   in the org (label embedded once at ingest). A query like "what's the most
+   common linux distro" or "how do people feel about X" is *about* a form
+   question, not any single document — matching straight to `documents` would
+   return one respondent's submission chosen by cosine distance, not the
+   population. If the best match clears `FORM_MATCH_THRESHOLD` (default
+   `0.72`, stricter than the document threshold since question labels are
+   short and specific), `form_insights.build_breakdown` aggregates the real
+   answers — SQL `GROUP BY` for choice/numeric kinds, `form_themes` (clustered,
+   labelled, sentiment-scored) for free text — and `generation.synthesize_form_answer`
+   phrases it, grounded strictly on that breakdown. No match → falls through
+   to step 3 unchanged.
+3. Cosine similarity search via pgvector (HNSW index) over `documents`, org-scoped via `session_for_org`
+4. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.75`) → synthesise an answer from the chunk
+5. Else → honest "no documentation on this" response. There used to be a
    `staff_fallback()` step here matching against a single global
    `staff_directory.json` of fictional demo employees — it was never
    org-scoped, so every tenant saw the same fake names as if they were real
@@ -141,7 +154,8 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
 | `CLERK_AUTHORIZED_PARTIES` | No | — | Comma-separated allowed `azp` values (your app origins). If set, a token minted for another origin is rejected |
 | `BACKEND_API_SECRET` | Yes (prod) | — | Shared secret for Next.js → backend calls (X-API-Key). Guards `/ingest` and `/webhooks/clerk` |
 | `CLERK_WEBHOOK_SECRET` | Yes (webhooks) | — | Svix signing secret. Verified in the Next.js `/api/webhooks/clerk` route, which forwards verified events to the backend `/webhooks/clerk` |
-| `SIMILARITY_THRESHOLD` | No | `0.65` | Cosine similarity cutoff |
+| `SIMILARITY_THRESHOLD` | No | `0.65` | Cosine similarity cutoff for document chunks |
+| `FORM_MATCH_THRESHOLD` | No | `0.72` | Cosine similarity cutoff for matching a query to a form question (see Retrieval Logic) |
 | `USE_MOCK` | No | `false` | Load from `sample_docs/` instead of real sources |
 | `PUBLIC_DOC_IDS` | No | `""` | Comma-separated public Google Doc IDs or URLs (global fallback) |
 | `NOTION_API_KEY` | No | `""` | Notion integration token (global fallback) |

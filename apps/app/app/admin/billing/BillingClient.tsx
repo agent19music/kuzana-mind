@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "../../../components/Button";
 import DashboardShell from "../../../components/DashboardShell";
 
 const PLANS = [
@@ -86,26 +87,14 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
           <h2 style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
             {plan.name} · {plan.price}/mo
           </h2>
-          <button
+          <Button
             onClick={onClose}
-            className="btn-press"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 20,
-              color: "#ccc",
-              lineHeight: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 44,
-              height: 44,
-              borderRadius: 8,
-            }}
+            variant="ghost"
+            size="icon-lg"
+            style={{ fontSize: 20, color: "#ccc", lineHeight: 1 }}
           >
             ×
-          </button>
+          </Button>
         </div>
 
         {step === "done" ? (
@@ -117,23 +106,9 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
             <p style={{ fontSize: 14, color: "#888", lineHeight: 1.6, marginBottom: 32 }}>
               Your plan has been upgraded. New limits are active immediately.
             </p>
-            <button
-              onClick={onClose}
-              className="btn-press"
-              style={{
-                background: "#111",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                padding: "12px 32px",
-                fontSize: 14,
-                fontWeight: 400,
-                cursor: "pointer",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
-              }}
-            >
+            <Button onClick={onClose} variant="primary-dark" size="lg">
               Done
-            </button>
+            </Button>
           </div>
         ) : step === "review" ? (
           <div>
@@ -169,25 +144,14 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
             </div>
 
             <div style={{ padding: "20px 28px" }}>
-              <button
+              <Button
                 onClick={() => setStep("payment")}
-                className="btn-press"
-                style={{
-                  width: "100%",
-                  background: "#2563EB",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 9,
-                  padding: "13px",
-                  fontSize: 14,
-                  fontWeight: 400,
-                  cursor: "pointer",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.18), 0 1px 4px rgba(37,99,235,0.25)",
-                  letterSpacing: "-0.01em",
-                }}
+                variant="primary"
+                size="lg"
+                style={{ width: "100%" }}
               >
                 Continue to payment →
-              </button>
+              </Button>
               <p style={{ fontSize: 11, color: "#bbb", textAlign: "center", marginTop: 10 }}>
                 Cancel anytime. No lock-in.
               </p>
@@ -278,25 +242,14 @@ function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () =>
                 </div>
               </div>
             </div>
-            <button
+            <Button
               onClick={() => setStep("done")}
-              className="btn-press"
-              style={{
-                width: "100%",
-                background: "#111",
-                color: "#fff",
-                border: "none",
-                borderRadius: 9,
-                padding: "13px",
-                fontSize: 14,
-                fontWeight: 400,
-                cursor: "pointer",
-                letterSpacing: "-0.01em",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
-              }}
+              variant="primary-dark"
+              size="lg"
+              style={{ width: "100%" }}
             >
               Upgrade to {plan.name} — {plan.price}/mo
-            </button>
+            </Button>
             <p style={{ fontSize: 11, color: "#bbb", textAlign: "center", marginTop: 10 }}>
               Secured · 256-bit encryption
             </p>
@@ -347,24 +300,9 @@ function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => 
           ))}
         </div>
 
-        <button
-          onClick={onUpgrade}
-          className="btn-press"
-          style={{
-            width: "100%",
-            background: "#fff",
-            color: "#111",
-            border: "none",
-            borderRadius: 8,
-            padding: "11px",
-            fontSize: 13.5,
-            fontWeight: 400,
-            cursor: "pointer",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-          }}
-        >
+        <Button onClick={onUpgrade} variant="secondary" style={{ width: "100%" }}>
           Get started
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -384,9 +322,6 @@ export default function BillingClient({ used }: { used: Usage }) {
         .billing-plans-mobile { display: none; margin-bottom: 48px; }
         .billing-history-row { display: grid; grid-template-columns: 120px 1fr 100px 80px; padding: 14px 24px; align-items: center; }
         .billing-history-amount { }
-
-        .btn-press { transition: transform 150ms cubic-bezier(0.2, 0, 0, 1); }
-        .btn-press:active { transform: scale(0.96); }
 
         @media (max-width: 768px) {
           .billing-wrap { padding: 28px 20px 64px; }
@@ -425,25 +360,9 @@ export default function BillingClient({ used }: { used: Usage }) {
               <p style={{ fontSize: 22, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
                 Starter · Free
               </p>
-              <button
-                onClick={() => setModal(PLANS[1])}
-                className="btn-press"
-                style={{
-                  background: "#2563EB",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "9px 20px",
-                  fontSize: 13.5,
-                  fontWeight: 400,
-                  cursor: "pointer",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(0,0,0,0.18), 0 1px 4px rgba(37,99,235,0.2)",
-                  letterSpacing: "-0.01em",
-                  whiteSpace: "nowrap",
-                }}
-              >
+              <Button onClick={() => setModal(PLANS[1])} variant="primary">
                 Upgrade to Pro
-              </button>
+              </Button>
             </div>
 
             {/* Usage bars */}
@@ -533,13 +452,9 @@ export default function BillingClient({ used }: { used: Usage }) {
                     </div>
                   ))}
                 </div>
-                <a
-                  href="mailto:hi@athena.app"
-                  className="btn-press"
-                  style={{ display: "block", textAlign: "center", fontSize: 13.5, fontWeight: 400, color: "#fff", background: "#111", border: "none", borderRadius: 8, padding: "11px", textDecoration: "none", cursor: "pointer", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)" }}
-                >
+                <Button href="mailto:hi@athena.app" variant="primary-dark" style={{ width: "100%" }}>
                   Contact sales
-                </a>
+                </Button>
               </div>
             )}
           </div>
@@ -595,45 +510,17 @@ export default function BillingClient({ used }: { used: Usage }) {
                     Current plan
                   </div>
                 ) : plan.priceMonthly === null ? (
-                  <a
-                    href="mailto:hi@athena.app"
-                    className="btn-press"
-                    style={{
-                      display: "block",
-                      textAlign: "center",
-                      fontSize: 13.5,
-                      fontWeight: 400,
-                      color: "#fff",
-                      background: "#111",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "11px",
-                      textDecoration: "none",
-                      cursor: "pointer",
-                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
-                    }}
-                  >
+                  <Button href="mailto:hi@athena.app" variant="primary-dark" style={{ width: "100%" }}>
                     Contact sales
-                  </a>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     onClick={() => setModal(plan)}
-                    className="btn-press"
-                    style={{
-                      width: "100%",
-                      fontSize: 13.5,
-                      fontWeight: 400,
-                      color: "#fff",
-                      background: "#111",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "11px",
-                      cursor: "pointer",
-                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
-                    }}
+                    variant="primary-dark"
+                    style={{ width: "100%" }}
                   >
                     Upgrade to {plan.name}
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}

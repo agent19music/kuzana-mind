@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import SideNav from "./SideNav";
+import { Button } from "./Button";
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -78,25 +79,11 @@ export default function DashboardShell({ children }: { children: React.ReactNode
               <Image src="/athena-mind-logo.png" alt="Athena" width={24} height={24} style={{ borderRadius: 4 }} />
               <span style={{ fontSize: 16, fontWeight: 400, color: "#111", letterSpacing: "-0.02em" }}>Athena</span>
             </Link>
-            <button
-              onClick={() => setMobileNavOpen(true)}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                width: 40,
-                height: 40,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 8,
-                color: "#444",
-              }}
-            >
+            <Button onClick={() => setMobileNavOpen(true)} variant="ghost" size="icon-lg">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
-            </button>
+            </Button>
           </div>
 
           {children}

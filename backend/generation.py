@@ -32,9 +32,9 @@ _SYSTEM = (
 )
 
 
-def _build_config() -> types.GenerateContentConfig:
+def _build_config(system: str = _SYSTEM) -> types.GenerateContentConfig:
     kwargs = dict(
-        system_instruction=_SYSTEM,
+        system_instruction=system,
         temperature=0.2,
         max_output_tokens=800,
     )
@@ -89,6 +89,51 @@ async def synthesize_answer(
     except Exception as exc:  # noqa: BLE001 - degrade gracefully, never break chat
         print(f"Answer synthesis failed, returning raw chunk: {exc}")
         return chunk_text
+
+
+_FORM_SYSTEM = (
+    "You are Athena, an internal knowledge assistant for a company. The "
+    "employee asked a question about a form or survey, and you have been given "
+    "a real aggregate breakdown of every response to the matching question — "
+    "not one respondent's answer. Answer using ONLY the breakdown: name the "
+    "most common answer or state the counts/average as given, in 1 to 3 short "
+    "sentences. Never invent a response, count, or percentage that is not in "
+    "the breakdown, and never present a single line item as the whole picture "
+    "if the breakdown lists several. If the breakdown does not actually answer "
+    "the question, say so plainly."
+)
+
+
+def _generate_form_sync(query: str, question_label: str, breakdown: str, history: list[dict] | None) -> str:
+    convo = _history_block(history)
+    convo_section = f"Conversation so far:\n{convo}\n\n" if convo else ""
+    prompt = (
+        f"{convo_section}"
+        f"Current question: {query}\n\n"
+        f'Matching form question: "{question_label}"\n\n'
+        f"Breakdown of responses:\n{breakdown}\n\n"
+        "Answer:"
+    )
+    resp = _client.models.generate_content(
+        model=GEN_MODEL,
+        contents=prompt,
+        config=_build_config(_FORM_SYSTEM),
+    )
+    return (resp.text or "").strip()
+
+
+async def synthesize_form_answer(
+    query: str, question_label: str, breakdown: str, history: list[dict] | None = None
+) -> str:
+    """Plain-language answer grounded on a real aggregate breakdown (SQL counts
+    or clustered themes), not one respondent's wording. Never raises — on
+    failure it returns the raw breakdown so the user still gets the real data."""
+    try:
+        answer = await asyncio.to_thread(_generate_form_sync, query, question_label, breakdown, history)
+        return answer or breakdown
+    except Exception as exc:  # noqa: BLE001 - degrade gracefully, never break chat
+        print(f"Form answer synthesis failed, returning raw breakdown: {exc}")
+        return breakdown
 
 
 _CONDENSE_SYSTEM = (

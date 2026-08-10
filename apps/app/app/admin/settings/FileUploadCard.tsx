@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FileArrowUp, FolderSimplePlus } from "@phosphor-icons/react";
+import { Button } from "@/components/Button";
 
 type UploadResult = {
   uploaded: number;
@@ -95,26 +96,14 @@ export default function FileUploadCard() {
             onChange={(e) => upload(e.target.files)}
             disabled={isUploading}
           />
-          <button
+          <Button
             onClick={() => fileRef.current?.click()}
             disabled={isUploading}
-            className="btn-pill"
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#1a1a1a",
-              background: "#fff",
-              border: "1px solid #e5e5e5",
-              borderRadius: 9999,
-              padding: "7px 16px",
-              cursor: isUploading ? "not-allowed" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
+            variant="secondary"
+            full
           >
             <FileArrowUp size={14} /> Choose files
-          </button>
+          </Button>
 
           <input
             ref={folderRef}
@@ -126,26 +115,14 @@ export default function FileUploadCard() {
             onChange={(e) => upload(e.target.files)}
             disabled={isUploading}
           />
-          <button
+          <Button
             onClick={() => folderRef.current?.click()}
             disabled={isUploading}
-            className="btn-pill"
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#1a1a1a",
-              background: "#fff",
-              border: "1px solid #e5e5e5",
-              borderRadius: 9999,
-              padding: "7px 16px",
-              cursor: isUploading ? "not-allowed" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
+            variant="secondary"
+            full
           >
             <FolderSimplePlus size={14} /> Choose folder
-          </button>
+          </Button>
         </div>
       </div>
 

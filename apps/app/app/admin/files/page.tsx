@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { UploadSimple, Plus, FolderSimplePlus, CaretRight, CaretDown } from "@phosphor-icons/react";
 import DashboardShell from "../../../components/DashboardShell";
+import { Button } from "../../../components/Button";
 import UploadQueue, { type QueueItem } from "./UploadQueue";
 
 const UPLOAD_CONCURRENCY = 3;
@@ -187,23 +188,14 @@ function GroupChildren({ groupKey }: { groupKey: string }) {
           Showing {rows.length.toLocaleString()} of {total.toLocaleString()}
         </span>
         {rows.length < total && (
-          <button
+          <Button
             onClick={() => loadPage(rows.length)}
             disabled={loading}
-            className="btn-pill"
-            style={{
-              fontSize: 12,
-              color: loading ? "#bbb" : "#444",
-              background: "#fff",
-              border: "1px solid #E2E2E2",
-              borderRadius: 6,
-              padding: "4px 12px",
-              cursor: loading ? "not-allowed" : "pointer",
-              fontWeight: 400,
-            }}
+            variant="secondary"
+            size="sm"
           >
             {loading ? "Loading…" : `Load ${Math.min(GROUP_PAGE_SIZE, total - rows.length)} more`}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -453,52 +445,28 @@ export default function FilesPage() {
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                  <button
+                  <Button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       fileInputRef.current?.click();
                     }}
-                    className="btn-pill"
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 400,
-                      color: "#1a1a1a",
-                      background: "#fff",
-                      border: "1px solid #e5e5e5",
-                      borderRadius: 9999,
-                      padding: "7px 18px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      cursor: "pointer",
-                    }}
+                    variant="secondary"
+                    full
                   >
                     <Plus size={14} /> Choose files
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       folderInputRef.current?.click();
                     }}
-                    className="btn-pill"
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 400,
-                      color: "#1a1a1a",
-                      background: "#fff",
-                      border: "1px solid #e5e5e5",
-                      borderRadius: 9999,
-                      padding: "7px 18px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      cursor: "pointer",
-                    }}
+                    variant="secondary"
+                    full
                   >
                     <FolderSimplePlus size={14} /> Choose folder
-                  </button>
+                  </Button>
                 </div>
             </>
           </div>
