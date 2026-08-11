@@ -8,14 +8,38 @@ import { cn } from "@/lib/utils";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.athena.uzskicorp.agency";
 const title = "Athena — Know instantly.";
 const description =
   "Ask anything about how we work. Get the right document or the right person — never a guess.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title,
   description,
   applicationName: "Athena",
+  openGraph: {
+    title,
+    description,
+    url: siteUrl,
+    siteName: "Athena",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Athena — Just ask.",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+    images: ["/og-image.jpg"],
+  },
   icons: {
     icon: [
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
@@ -26,16 +50,6 @@ export const metadata: Metadata = {
   manifest: "/site.webmanifest",
   robots: {
     index: false,
-    follow: false,
-    nocache: true,
-    googleBot: {
-      index: false,
-      follow: false,
-      noimageindex: true,
-      "max-snippet": -1,
-      "max-image-preview": "none",
-      "max-video-preview": -1,
-    },
   },
 };
 
