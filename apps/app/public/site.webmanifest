@@ -1,0 +1,21 @@
+{
+  "name": "Athena — Know instantly.",
+  "short_name": "Athena",
+  "description": "Ask anything about how we work. Get the right document or the right person — never a guess.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
