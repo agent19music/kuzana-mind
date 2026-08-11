@@ -9,9 +9,9 @@ import { cn } from "@/lib/utils";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://athena.uzskicorp.agency";
-const title = "Athena — Know instantly.";
+const title = "Athena — Just ask";
 const description =
-  "Ask anything about how we work. Get the right document or the right person — never a guess.";
+  "Stop hunting through docs and pinging teammates for answers. Ask Athena — get the exact document or the exact person, instantly.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
