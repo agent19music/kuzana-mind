@@ -7,8 +7,10 @@ export async function POST(request: NextRequest) {
   if (!orgId) return NextResponse.json({ error: "No organisation" }, { status: 401 });
   if (orgRole !== "org:admin") return NextResponse.json({ error: "Admin only" }, { status: 403 });
 
-  const { email, role } = await request.json();
-  if (!email?.trim()) return NextResponse.json({ error: "Email required" }, { status: 400 });
+  const { invitationId, email, role } = await request.json();
+  if (!invitationId || !email?.trim()) {
+    return NextResponse.json({ error: "invitationId and email required" }, { status: 400 });
+  }
 
   const normalizedEmail = email.trim().toLowerCase();
   const inviteRole = role === "org:admin" ? "org:admin" : "org:member";
@@ -23,6 +25,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const client = await clerkClient();
+
+    try {
+      await client.organizations.revokeOrganizationInvitation({
+        organizationId: orgId,
+        invitationId,
+        requestingUserId: userId ?? undefined,
+      });
+    } catch {
+      // Already accepted/revoked/expired — fine, we're about to replace it anyway.
+    }
+
     const invitation = await client.organizations.createOrganizationInvitation({
       organizationId: orgId,
       emailAddress: normalizedEmail,
@@ -32,7 +45,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ id: invitation.id, email: invitation.emailAddress });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to send invitation";
+    const message = err instanceof Error ? err.message : "Failed to resend invitation";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

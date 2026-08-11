@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import StaffClient from "./StaffClient";
 import DashboardShell from "../../../components/DashboardShell";
@@ -12,9 +12,11 @@ export default async function StaffPage() {
 
   const client = await clerkClient();
 
-  const [org, memberships] = await Promise.all([
+  const [org, memberships, invitations, self] = await Promise.all([
     client.organizations.getOrganization({ organizationId: orgId }),
     client.organizations.getOrganizationMembershipList({ organizationId: orgId, limit: 100 }),
+    client.organizations.getOrganizationInvitationList({ organizationId: orgId, status: ["pending"] }),
+    currentUser(),
   ]);
 
   const members = memberships.data.map((m) => ({
@@ -31,6 +33,19 @@ export default async function StaffPage() {
     }),
   }));
 
+  const pendingInvitations = invitations.data.map((i) => ({
+    id: i.id,
+    email: i.emailAddress,
+    role: i.role,
+    invitedAt: new Date(i.createdAt).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }),
+  }));
+
+  const currentUserEmails = (self?.emailAddresses ?? []).map((e) => e.emailAddress.toLowerCase());
+
   return (
     <DashboardShell>
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
@@ -38,7 +53,11 @@ export default async function StaffPage() {
             <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.2, marginBottom: 48 }}>
             Team
           </h1>
-          <StaffClient members={members} />
+          <StaffClient
+            members={members}
+            pendingInvitations={pendingInvitations}
+            currentUserEmails={currentUserEmails}
+          />
         </div>
       </main>
     </DashboardShell>
