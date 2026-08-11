@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.athena.uzskicorp.agency";
-const title = "Athena — Just ask";
+const title = "Athena — Know instantly.";
 const description =
   "Stop hunting through docs and pinging teammates for answers. Ask Athena — get the exact document or the exact person, instantly.";
 
