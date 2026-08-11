@@ -67,7 +67,7 @@ async def answer_query(
     if form_question:
         breakdown = build_breakdown(org_id, form_question)
         if breakdown:
-            answer = await synthesize_form_answer(query, form_question["label"], breakdown, history)
+            answer, degraded = await synthesize_form_answer(query, form_question["label"], breakdown, history)
             return {
                 "answer": answer,
                 "type": "document",
@@ -76,6 +76,7 @@ async def answer_query(
                 "source_type": "tally",
                 "source_excerpt": breakdown[:500],
                 "similarity_score": round(form_question["score"], 4),
+                "degraded": degraded,
             }
 
     results = await similarity_search(query_embedding, org_id=org_id)
@@ -84,7 +85,7 @@ async def answer_query(
         best = results[0]
         # Synthesise a plain-language answer from the chunk instead of returning
         # the raw (often legalese) text. The source card still cites the chunk.
-        answer = await synthesize_answer(query, best["chunk_text"], history)
+        answer, degraded = await synthesize_answer(query, best["chunk_text"], history)
         return {
             "answer": answer,
             "type": "document",
@@ -96,6 +97,7 @@ async def answer_query(
             # highlight, which a synthesized answer can't guarantee.
             "source_excerpt": best["chunk_text"][:500],
             "similarity_score": round(best["similarity_score"], 4),
+            "degraded": degraded,
         }
 
     # Low confidence — never hallucinate a document answer, and never invent a

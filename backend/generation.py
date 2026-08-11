@@ -12,13 +12,45 @@ quota, network) so chat never hard-fails on the synthesis step.
 import asyncio
 import json
 import os
+from typing import Callable
 
 from google import genai
 from google.genai import types
 
+from gemini_retry import call_with_retry, is_retryable
+
 GEN_MODEL = os.getenv("GEN_MODEL", "gemini-2.5-flash")
+# Gemini quotas are per-model, so a different model often still has headroom
+# when the primary hits its rate limit. Tried once, after retries on the
+# primary are exhausted, before giving up and letting the caller degrade.
+GEN_FALLBACK_MODEL = os.getenv("GEN_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+GEN_MAX_RETRIES = int(os.getenv("GEN_MAX_RETRIES", "3"))
+GEN_MAX_BACKOFF = float(os.getenv("GEN_MAX_BACKOFF", "8"))
 
 _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+
+def _call_gemini(build_response: Callable[[str], str]) -> str:
+    """Run build_response(model) against GEN_MODEL with retry/backoff on
+    transient errors; if it's still rate-limited/unavailable after retries,
+    try GEN_FALLBACK_MODEL once. Non-retryable errors (bad prompt, blocked
+    content) raise immediately — callers decide how to degrade."""
+    try:
+        return call_with_retry(
+            lambda: build_response(GEN_MODEL),
+            max_retries=GEN_MAX_RETRIES,
+            max_backoff=GEN_MAX_BACKOFF,
+        )
+    except Exception as exc:  # noqa: BLE001 - only fall back on quota/server errors
+        if not GEN_FALLBACK_MODEL or GEN_FALLBACK_MODEL == GEN_MODEL or not is_retryable(exc):
+            raise
+        print(f"{GEN_MODEL} still failing after retries ({exc}); trying {GEN_FALLBACK_MODEL}")
+        return call_with_retry(
+            lambda: build_response(GEN_FALLBACK_MODEL),
+            max_retries=2,
+            max_backoff=GEN_MAX_BACKOFF,
+        )
+
 
 _SYSTEM = (
     "You are Athena, an internal knowledge assistant for a company. "
@@ -70,25 +102,29 @@ def _generate_sync(query: str, chunk_text: str, history: list[dict] | None) -> s
         f'Document excerpt:\n"""\n{chunk_text}\n"""\n\n'
         "Answer:"
     )
-    resp = _client.models.generate_content(
-        model=GEN_MODEL,
-        contents=prompt,
-        config=_build_config(),
-    )
-    return (resp.text or "").strip()
+    config = _build_config()
+
+    def build(model: str) -> str:
+        resp = _client.models.generate_content(model=model, contents=prompt, config=config)
+        return (resp.text or "").strip()
+
+    return _call_gemini(build)
 
 
 async def synthesize_answer(
     query: str, chunk_text: str, history: list[dict] | None = None
-) -> str:
+) -> tuple[str, bool]:
     """Plain-language answer grounded on chunk_text, aware of prior turns. Never
-    raises — on failure it returns the raw chunk so the user still gets material."""
+    raises — on failure it returns the raw chunk so the user still gets material.
+    Returns (answer, degraded) — degraded is True when Gemini (both the primary
+    and fallback model) failed and the raw chunk was returned instead, so the
+    caller can tell the user why the answer looks unpolished."""
     try:
         answer = await asyncio.to_thread(_generate_sync, query, chunk_text, history)
-        return answer or chunk_text
+        return (answer, False) if answer else (chunk_text, True)
     except Exception as exc:  # noqa: BLE001 - degrade gracefully, never break chat
         print(f"Answer synthesis failed, returning raw chunk: {exc}")
-        return chunk_text
+        return chunk_text, True
 
 
 _FORM_SYSTEM = (
@@ -114,26 +150,28 @@ def _generate_form_sync(query: str, question_label: str, breakdown: str, history
         f"Breakdown of responses:\n{breakdown}\n\n"
         "Answer:"
     )
-    resp = _client.models.generate_content(
-        model=GEN_MODEL,
-        contents=prompt,
-        config=_build_config(_FORM_SYSTEM),
-    )
-    return (resp.text or "").strip()
+    config = _build_config(_FORM_SYSTEM)
+
+    def build(model: str) -> str:
+        resp = _client.models.generate_content(model=model, contents=prompt, config=config)
+        return (resp.text or "").strip()
+
+    return _call_gemini(build)
 
 
 async def synthesize_form_answer(
     query: str, question_label: str, breakdown: str, history: list[dict] | None = None
-) -> str:
+) -> tuple[str, bool]:
     """Plain-language answer grounded on a real aggregate breakdown (SQL counts
     or clustered themes), not one respondent's wording. Never raises — on
-    failure it returns the raw breakdown so the user still gets the real data."""
+    failure it returns the raw breakdown so the user still gets the real data.
+    Returns (answer, degraded) — see synthesize_answer."""
     try:
         answer = await asyncio.to_thread(_generate_form_sync, query, question_label, breakdown, history)
-        return answer or breakdown
+        return (answer, False) if answer else (breakdown, True)
     except Exception as exc:  # noqa: BLE001 - degrade gracefully, never break chat
         print(f"Form answer synthesis failed, returning raw breakdown: {exc}")
-        return breakdown
+        return breakdown, True
 
 
 _CONDENSE_SYSTEM = (
@@ -157,12 +195,13 @@ def _condense_sync(query: str, history: list[dict]) -> str:
         kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
     except Exception:  # noqa: BLE001
         pass
-    resp = _client.models.generate_content(
-        model=GEN_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(**kwargs),
-    )
-    return (resp.text or "").strip()
+    config = types.GenerateContentConfig(**kwargs)
+
+    def build(model: str) -> str:
+        resp = _client.models.generate_content(model=model, contents=prompt, config=config)
+        return (resp.text or "").strip()
+
+    return _call_gemini(build)
 
 
 async def condense_question(query: str, history: list[dict] | None) -> str:
@@ -235,12 +274,13 @@ def _parse_json(raw: str):
 def _label_theme_sync(question: str, samples: list[str]) -> dict:
     listed = "\n".join(f"- {s}" for s in samples)
     prompt = f"Question: {question}\n\nAnswers grouped together:\n{listed}\n\nJSON:"
-    resp = _client.models.generate_content(
-        model=GEN_MODEL,
-        contents=prompt,
-        config=_json_only_config(_THEME_SYSTEM, 300),
-    )
-    data = _parse_json(resp.text)
+    config = _json_only_config(_THEME_SYSTEM, 300)
+
+    def build(model: str) -> str:
+        resp = _client.models.generate_content(model=model, contents=prompt, config=config)
+        return resp.text or ""
+
+    data = _parse_json(_call_gemini(build))
     return {
         "label": str(data.get("label", "")).strip()[:120],
         "summary": str(data.get("summary", "")).strip()[:600],
@@ -264,12 +304,14 @@ async def label_theme(question: str, samples: list[str]) -> dict:
 
 def _sentiment_sync(texts: list[str]) -> list[str]:
     listed = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
-    resp = _client.models.generate_content(
-        model=GEN_MODEL,
-        contents=f"Answers:\n{listed}\n\nJSON:",
-        config=_json_only_config(_SENTIMENT_SYSTEM, 40 * len(texts) + 200),
-    )
-    data = _parse_json(resp.text)
+    contents = f"Answers:\n{listed}\n\nJSON:"
+    config = _json_only_config(_SENTIMENT_SYSTEM, 40 * len(texts) + 200)
+
+    def build(model: str) -> str:
+        resp = _client.models.generate_content(model=model, contents=contents, config=config)
+        return resp.text or ""
+
+    data = _parse_json(_call_gemini(build))
 
     allowed = {"positive", "negative", "neutral"}
     out = ["neutral"] * len(texts)

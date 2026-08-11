@@ -10,16 +10,11 @@ asyncio.to_thread so they don't block the event loop.
 """
 import asyncio
 import os
-import time
 
 from google import genai
 from google.genai import types
 
-try:
-    from google.genai import errors as genai_errors
-    _API_ERROR: type[Exception] = genai_errors.APIError
-except Exception:  # pragma: no cover - SDK shape fallback
-    _API_ERROR = Exception
+from gemini_retry import call_with_retry
 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-2")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
@@ -31,42 +26,22 @@ _MAX_BACKOFF = 30.0
 _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
-def _is_retryable(exc: Exception) -> bool:
-    """Retry rate limits (429) and server errors (5xx); also naked network errors."""
-    code = getattr(exc, "code", None)
-    if code is None:
-        return not isinstance(exc, _API_ERROR)  # network/timeout, not a clean API error
-    try:
-        code = int(code)
-    except (TypeError, ValueError):
-        return False
-    return code == 429 or 500 <= code < 600
-
-
 def _embed_call(texts: list[str], task_type: str) -> list[list[float]]:
     """One API call for a batch, with exponential backoff on transient failures."""
     config = types.EmbedContentConfig(
         output_dimensionality=EMBED_DIM,
         task_type=task_type,
     )
-    delay = 1.0
-    last_exc: Exception | None = None
-    for attempt in range(_MAX_RETRIES):
-        try:
-            resp = _client.models.embed_content(
-                model=EMBED_MODEL,
-                contents=texts,
-                config=config,
-            )
-            return [e.values for e in resp.embeddings]
-        except Exception as exc:  # noqa: BLE001 - classify then decide
-            last_exc = exc
-            if attempt == _MAX_RETRIES - 1 or not _is_retryable(exc):
-                raise
-            time.sleep(delay)
-            delay = min(delay * 2, _MAX_BACKOFF)
-    # Unreachable, but keeps type-checkers happy.
-    raise RuntimeError(f"Embedding failed: {last_exc}")
+
+    def do_call() -> list[list[float]]:
+        resp = _client.models.embed_content(
+            model=EMBED_MODEL,
+            contents=texts,
+            config=config,
+        )
+        return [e.values for e in resp.embeddings]
+
+    return call_with_retry(do_call, max_retries=_MAX_RETRIES, max_backoff=_MAX_BACKOFF)
 
 
 def _embed_batch_sync(texts: list[str], task_type: str) -> list[list[float]]:

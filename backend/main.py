@@ -18,7 +18,7 @@ from sqlalchemy import func, text
 from auth import AuthContext, require_auth, require_backend_secret, require_read_auth
 import storage
 from extract import SUPPORTED, extract_text, pdf_page_count
-from database import Conversation, DocumentChunk, Message, session_for_org
+from database import Conversation, DocumentChunk, Message, ensure_organization_exists, session_for_org
 from embeddings import embed_documents
 from ingest import create_ingest_job, run_ingestion
 from retrieval import answer_query
@@ -68,6 +68,7 @@ class ChatResponse(BaseModel):
     staff_title: str | None = None
     staff_department: str | None = None
     similarity_score: float | None = None
+    degraded: bool = False  # True when Gemini was unavailable/rate-limited and the raw chunk was returned unsynthesized
 
 
 # Assistant source/staff metadata persisted per message — everything the answer
@@ -75,7 +76,7 @@ class ChatResponse(BaseModel):
 _META_KEYS = (
     "type", "source_title", "source_doc_id", "source_type", "source_excerpt",
     "staff_name", "staff_email", "staff_domain", "staff_title",
-    "staff_department", "similarity_score",
+    "staff_department", "similarity_score", "degraded",
 )
 
 
@@ -356,6 +357,11 @@ async def chat(
     org_id = auth_ctx.clerk_org_id
     user_id = auth_ctx.clerk_user_id
     query = request.query.strip()
+
+    # Safety net: if onboarding's /ingest call and the Clerk webhook both missed
+    # this org (see database.ensure_organization_exists), this is a Conversation/
+    # Message FK insert away from a 500 instead of a working chat.
+    ensure_organization_exists(org_id)
 
     # ---- Read phase: resolve the thread + prior turns (for multi-turn) --------
     # Kept separate from the write phase so no DB session is held across the
@@ -785,6 +791,11 @@ async def upload_files(
 
     org_id = auth_ctx.clerk_org_id
 
+    # Safety net: see ensure_organization_exists — without this, a missing
+    # organizations row surfaces as a raw ForeignKeyViolation 500 on the
+    # DocumentChunk/DocumentFile insert below instead of the upload just working.
+    ensure_organization_exists(org_id)
+
     total_size = sum(f.size or 0 for f in files)
     if total_size > MAX_TOTAL_BYTES:
         raise HTTPException(400, "Total upload exceeds 150 MB")
@@ -1113,6 +1124,10 @@ async def register_integration_interest(
     integration = body.integration.strip().lower()
     if integration not in _NOTIFIABLE_INTEGRATIONS:
         raise HTTPException(status_code=400, detail=f"Unknown integration '{body.integration}'")
+
+    # Safety net: see ensure_organization_exists — otherwise a missing org row's
+    # FK violation gets misreported as "already registered" by the except below.
+    ensure_organization_exists(auth_ctx.clerk_org_id)
 
     with get_session() as db:
         try:

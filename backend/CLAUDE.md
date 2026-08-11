@@ -11,6 +11,7 @@ FastAPI + pgvector service. Handles auth verification, ingestion, embedding, and
 | Framework | FastAPI | Async, Pydantic v2 models |
 | Database | PostgreSQL 16 + pgvector | HNSW (cosine) index on `embedding` — migration `9b4d3e7a1c30` |
 | Embeddings | Google Gemini `gemini-embedding-2` @ 768 | Shared `embeddings.py`: batched + retried (backoff), `RETRIEVAL_DOCUMENT` for ingest, `RETRIEVAL_QUERY` for queries |
+| Generation | Google Gemini `gemini-2.5-flash` | `generation.py`: retried (backoff) then falls back to `GEN_FALLBACK_MODEL` on sustained rate limits — see `gemini_retry.py` |
 | Chunking | Header split + `RecursiveCharacterTextSplitter` | Header split for structure, then bound each section to `CHUNK_SIZE_CHARS` (~3000) with `CHUNK_OVERLAP_CHARS` overlap; header breadcrumb kept in metadata + prefixed to chunk text |
 | ORM | SQLAlchemy 2.0 (sync session via `get_session`) | Async not used — embedding calls use `asyncio.to_thread` |
 | Auth | Clerk JWT (RS256 via JWKS) + X-API-Key | Two paths — see Auth section below |
@@ -24,6 +25,9 @@ backend/
 ├── main.py              # FastAPI app, CORS, lifespan (init_db on startup), endpoints
 ├── auth.py              # Clerk JWT verification + require_backend_secret FastAPI dep
 ├── retrieval.py         # Embedding query → pgvector search → honest no-match fallback
+├── embeddings.py        # Shared embed_documents/embed_query — batched, retried via gemini_retry
+├── generation.py        # LLM answer synthesis — retried via gemini_retry, then falls back to GEN_FALLBACK_MODEL
+├── gemini_retry.py      # Shared retry/backoff classification (429/5xx) used by embeddings.py + generation.py
 ├── ingest.py            # Document loading (Notion / public docs / Tally / mock) → chunk → embed → upsert
 ├── database.py          # SQLAlchemy models: DocumentChunk, Organization, OrganizationMember, IngestJob
 └── sample_docs/         # Local markdown files used when USE_MOCK=true
@@ -79,6 +83,12 @@ Isolation is enforced at **two layers** — the app never falls back to an unsco
 
 - `DocumentChunk.org_id` — NOT NULL, FK → `organizations.clerk_org_id` `ON DELETE CASCADE` (org offboarding cascades chunks). Composite index `(org_id, doc_id)`.
 - `database.py::Organization` per-org config: `notion_api_key`, `notion_root_page_id`, `public_doc_ids` (JSONB), `drive_folder_id`, `tally_api_key`, `tally_form_ids` (JSONB), `logo_url`.
+
+### Missing-org self-heal
+
+Every tenant table FKs to `organizations.clerk_org_id`. That row is normally created by two independent paths — the onboarding `/api/orgs` → `POST /ingest` call, and the Clerk `organization.created` webhook — and either can silently fail to run (onboarding intentionally doesn't block sign-up on a failed `/ingest` call; the webhook can simply not be configured for a given environment/domain). When that happens, a real Clerk org has no local row, and every write for it (`/chat`, `/upload`, `/integrations/notify`) 500s on `ForeignKeyViolation` instead of failing cleanly — this happened in production (org onboarded successfully in Clerk, but `organizations` never got the row, so uploads and chat both 500'd until "Sync now" was clicked).
+
+`database.ensure_organization_exists(org_id, name=None)` — `INSERT ... ON CONFLICT (clerk_org_id) DO NOTHING`, called at the top of those three endpoints — closes this regardless of which upstream path failed. Idempotent and safe under concurrent first-requests for a brand-new org. If you add a new org-scoped write endpoint outside of `/ingest` (which already upserts via `run_ingestion`), call this first.
 
 ---
 
@@ -154,6 +164,11 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
 | `CLERK_AUTHORIZED_PARTIES` | No | — | Comma-separated allowed `azp` values (your app origins). If set, a token minted for another origin is rejected |
 | `BACKEND_API_SECRET` | Yes (prod) | — | Shared secret for Next.js → backend calls (X-API-Key). Guards `/ingest` and `/webhooks/clerk` |
 | `CLERK_WEBHOOK_SECRET` | Yes (webhooks) | — | Svix signing secret. Verified in the Next.js `/api/webhooks/clerk` route, which forwards verified events to the backend `/webhooks/clerk` |
+| `EMBED_MAX_RETRIES` | No | `5` | Retry attempts for a rate-limited/5xx embedding call (backoff caps at 30s) — see `gemini_retry.py` |
+| `GEN_MODEL` | No | `gemini-2.5-flash` | Chat/generation model |
+| `GEN_FALLBACK_MODEL` | No | `gemini-2.5-flash-lite` | Tried once if `GEN_MODEL` is still rate-limited after retries — Gemini quotas are per-model, so a different model often has headroom. Set to `""` to disable |
+| `GEN_MAX_RETRIES` | No | `3` | Retry attempts on `GEN_MODEL` before falling back to `GEN_FALLBACK_MODEL` |
+| `GEN_MAX_BACKOFF` | No | `8` | Backoff cap (seconds) for generation retries — kept short since `/chat` is a live request, unlike ingestion's embedding backoff |
 | `SIMILARITY_THRESHOLD` | No | `0.65` | Cosine similarity cutoff for document chunks |
 | `FORM_MATCH_THRESHOLD` | No | `0.72` | Cosine similarity cutoff for matching a query to a form question (see Retrieval Logic) |
 | `USE_MOCK` | No | `false` | Load from `sample_docs/` instead of real sources |

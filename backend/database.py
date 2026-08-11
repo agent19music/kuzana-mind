@@ -387,6 +387,37 @@ def get_session() -> Session:
     return Session(engine)
 
 
+def ensure_organization_exists(clerk_org_id: str, name: str | None = None) -> None:
+    """
+    Idempotently creates a minimal `organizations` row if one doesn't exist yet.
+
+    Every tenant-owned table (documents, conversations, messages, ...) has a
+    NOT NULL FK to organizations.clerk_org_id — a missing row there turns every
+    write for that org into a 500 (ForeignKeyViolation) instead of a clean
+    error. Rows are normally created by the onboarding /ingest call or the
+    Clerk `organization.created` webhook, both of which upsert this same row —
+    but either can fail silently (onboarding intentionally doesn't block sign-up
+    on a failed /ingest call; the webhook may not be configured in a given
+    environment), leaving a Clerk org with no local record. Call this at the
+    top of any org-scoped write path as a safety net.
+
+    `ON CONFLICT DO NOTHING` makes this safe to call on every request and safe
+    under a race between two concurrent first-requests for a brand-new org.
+    """
+    if not clerk_org_id:
+        return
+    with get_session() as session:
+        session.execute(
+            text(
+                "INSERT INTO organizations (clerk_org_id, name) "
+                "VALUES (:clerk_org_id, :name) "
+                "ON CONFLICT (clerk_org_id) DO NOTHING"
+            ),
+            {"clerk_org_id": clerk_org_id, "name": name or "Unnamed Organisation"},
+        )
+        session.commit()
+
+
 @contextmanager
 def session_for_org(org_id: str):
     """

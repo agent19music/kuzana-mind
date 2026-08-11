@@ -6,6 +6,7 @@ import DocumentCard from "../../components/chat/DocumentCard";
 import StaffCard from "../../components/chat/StaffCard";
 import DashboardShell from "../../components/DashboardShell";
 import { Button } from "../../components/Button";
+import { Toast } from "../../components/Toast";
 
 
 const API_URL = "/api";
@@ -23,6 +24,7 @@ type ChatResponse = {
   staff_title?: string;
   staff_department?: string;
   similarity_score?: number;
+  degraded?: boolean;
 };
 
 type Message =
@@ -107,6 +109,7 @@ export default function ChatClient() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -190,6 +193,10 @@ export default function ChatClient() {
       const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", data };
       setMessages((prev) => [...prev, assistantMsg]);
       refreshConversations();
+
+      if (data.degraded) {
+        setToast("Athena's AI is at capacity right now, so this answer shows the raw source text instead of a summary. Try again shortly.");
+      }
     } catch (err) {
       const detail = err instanceof Error ? err.message : "Unknown error";
       const errorMsg: Message = {
@@ -507,6 +514,8 @@ export default function ChatClient() {
           </div>
         </div>
       </div>
+
+      <Toast message={toast} onDismiss={() => setToast(null)} />
     </DashboardShell>
   );
 }
