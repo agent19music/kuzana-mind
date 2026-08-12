@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
+import { ClockCounterClockwise, Plus } from "@phosphor-icons/react";
 import DocumentCard from "../../components/chat/DocumentCard";
 import StaffCard from "../../components/chat/StaffCard";
 import DashboardShell from "../../components/DashboardShell";
@@ -111,6 +112,7 @@ export default function ChatClient() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loadingThread, setLoadingThread] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -137,10 +139,12 @@ export default function ChatClient() {
     setActiveId(null);
     setMessages([]);
     setInput("");
+    setMobileHistoryOpen(false);
     inputRef.current?.focus();
   }
 
   async function openConversation(id: string) {
+    setMobileHistoryOpen(false);
     if (id === activeId) return;
     setActiveId(id);
     setLoadingThread(true);
@@ -234,13 +238,42 @@ export default function ChatClient() {
         .convo-rail { width: 260px; min-width: 260px; }
         .convo-item .convo-del { opacity: 0; }
         .convo-item:hover .convo-del { opacity: 1; }
-        @media (max-width: 900px) { .convo-rail { display: none; } }
+        .chat-mobile-bar { display: none; }
+
+        @media (max-width: 900px) {
+          .convo-rail {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 65;
+            height: 100%;
+            width: 280px;
+            min-width: 0;
+            box-shadow: none;
+            transform: translateX(-100%);
+            transition: transform 240ms cubic-bezier(0.2, 0, 0, 1);
+          }
+          .convo-rail[data-open="true"] {
+            transform: translateX(0);
+            box-shadow: 8px 0 32px rgba(0,0,0,0.12);
+          }
+          .chat-mobile-bar { display: flex; }
+        }
       `}</style>
 
       <PageFadeIn style={{ display: "flex", flex: 1, overflow: "hidden", background: "var(--background)" }}>
+        {/* Mobile backdrop for the conversation drawer */}
+        {mobileHistoryOpen && (
+          <div
+            onClick={() => setMobileHistoryOpen(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.28)", zIndex: 64, backdropFilter: "blur(1px)" }}
+          />
+        )}
+
         {/* Conversations sidebar */}
         <aside
           className="convo-rail"
+          data-open={mobileHistoryOpen}
           style={{
             display: "flex",
             flexDirection: "column",
@@ -329,7 +362,31 @@ export default function ChatClient() {
         </aside>
 
         {/* Chat column */}
-        <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", minWidth: 0 }}>
+          {/* Mobile-only bar: conversation history + new chat, since the sidebar is a drawer below 900px */}
+          <div
+            className="chat-mobile-bar"
+            style={{
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 16px",
+              borderBottom: "1px solid var(--border)",
+              flexShrink: 0,
+            }}
+          >
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setMobileHistoryOpen(true)}
+              aria-label="Conversation history"
+            >
+              <ClockCounterClockwise size={18} />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={newChat} aria-label="New chat">
+              <Plus size={18} />
+            </Button>
+          </div>
+
           {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-8) var(--space-6)" }}>
             <div style={{ maxWidth: 720, margin: "0 auto" }}>

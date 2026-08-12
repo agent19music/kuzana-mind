@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "../../../components/Button";
 import { Toast } from "../../../components/Toast";
 
@@ -43,7 +42,6 @@ function InviteForm({
   currentUserEmails: string[];
   onSent: (email: string) => void;
 }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("org:member");
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
@@ -71,7 +69,6 @@ function InviteForm({
         setEmail("");
         onSent(data.email);
         startCooldown();
-        router.refresh();
       }
     } catch {
       setMessage("Could not reach server");
@@ -156,7 +153,6 @@ function ResendButton({
   invitation: PendingInvitation;
   onSent: (email: string) => void;
 }) {
-  const router = useRouter();
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
   const [cooldown, startCooldown] = useCooldown();
@@ -183,7 +179,6 @@ function ResendButton({
       setState("idle");
       onSent(data.email);
       startCooldown();
-      router.refresh();
     } catch {
       setError("Could not reach server");
       setState("error");
@@ -241,9 +236,11 @@ function PendingBadge() {
   );
 }
 
+const STAFF_POLL_MS = 4000;
+
 export default function StaffClient({
-  members,
-  pendingInvitations,
+  members: initialMembers,
+  pendingInvitations: initialPendingInvitations,
   currentUserEmails,
 }: {
   members: Member[];
@@ -251,9 +248,32 @@ export default function StaffClient({
   currentUserEmails: string[];
 }) {
   const [toast, setToast] = useState<string | null>(null);
+  const [members, setMembers] = useState(initialMembers);
+  const [pendingInvitations, setPendingInvitations] = useState(initialPendingInvitations);
+
+  async function refreshStaff() {
+    try {
+      const res = await fetch("/api/admin/staff", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMembers(data.members ?? []);
+      setPendingInvitations(data.pendingInvitations ?? []);
+    } catch {
+      /* keep showing the current list — next poll or action will retry */
+    }
+  }
+
+  // While an invite is outstanding, poll so it flips from "Pending" to a
+  // member the moment it's accepted — no manual refresh needed.
+  useEffect(() => {
+    if (pendingInvitations.length === 0) return;
+    const id = setInterval(refreshStaff, STAFF_POLL_MS);
+    return () => clearInterval(id);
+  }, [pendingInvitations.length]);
 
   function announceSent(email: string) {
     setToast(`Invitation sent to ${email}. If it doesn't show up, ask them to check the Promotions tab.`);
+    refreshStaff();
   }
 
   return (
