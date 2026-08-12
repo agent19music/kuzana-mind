@@ -1,9 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "../../../components/Button";
 import { Toast } from "../../../components/Toast";
+
+const INVITE_COOLDOWN_SECONDS = 59;
+
+// Counts down once per second after an invite email goes out, so the
+// send/resend button can't be spammed into re-sending the same email.
+function useCooldown() {
+  const [remaining, setRemaining] = useState(0);
+
+  useEffect(() => {
+    if (remaining <= 0) return;
+    const t = setTimeout(() => setRemaining((r) => r - 1), 1000);
+    return () => clearTimeout(t);
+  }, [remaining]);
+
+  return [remaining, () => setRemaining(INVITE_COOLDOWN_SECONDS)] as const;
+}
 
 type Member = {
   id: string;
@@ -32,6 +48,7 @@ function InviteForm({
   const [role, setRole] = useState("org:member");
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [cooldown, startCooldown] = useCooldown();
 
   const isSelf = currentUserEmails.includes(email.trim().toLowerCase());
 
@@ -53,6 +70,7 @@ function InviteForm({
         setState("idle");
         setEmail("");
         onSent(data.email);
+        startCooldown();
         router.refresh();
       }
     } catch {
@@ -105,13 +123,17 @@ function InviteForm({
           <option value="org:admin">Admin</option>
         </select>
       </div>
-      <Button
-        type="submit"
-        disabled={state === "loading" || !email.trim() || isSelf}
-        variant="primary-dark"
-      >
-        {state === "loading" ? "Sending…" : "Send invite"}
-      </Button>
+      {cooldown > 0 ? (
+        <span style={{ fontSize: 12, color: "#a3a3a3", padding: "9px 14px" }}>{cooldown}s</span>
+      ) : (
+        <Button
+          type="submit"
+          disabled={state === "loading" || !email.trim() || isSelf}
+          variant="primary-dark"
+        >
+          {state === "loading" ? "Sending…" : "Send invite"}
+        </Button>
+      )}
       {isSelf ? (
         <p style={{ fontSize: 13, color: "#b91c1c", margin: 0, width: "100%" }}>
           You can&apos;t invite yourself.
@@ -137,6 +159,7 @@ function ResendButton({
   const router = useRouter();
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
+  const [cooldown, startCooldown] = useCooldown();
 
   async function resend() {
     setState("loading");
@@ -159,6 +182,7 @@ function ResendButton({
       }
       setState("idle");
       onSent(data.email);
+      startCooldown();
       router.refresh();
     } catch {
       setError("Could not reach server");
@@ -168,9 +192,13 @@ function ResendButton({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-      <Button variant="secondary" size="sm" onClick={resend} disabled={state === "loading"}>
-        {state === "loading" ? "Resending…" : "Resend invite"}
-      </Button>
+      {cooldown > 0 ? (
+        <span style={{ fontSize: 12, color: "#a3a3a3" }}>{cooldown}s</span>
+      ) : (
+        <Button variant="secondary" size="sm" onClick={resend} disabled={state === "loading"}>
+          {state === "loading" ? "Resending…" : "Resend invite"}
+        </Button>
+      )}
       {state === "error" && (
         <p style={{ fontSize: 12, color: "#e05a5a", margin: 0 }}>{error}</p>
       )}

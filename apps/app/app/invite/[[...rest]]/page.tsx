@@ -52,7 +52,17 @@ const clerkAppearance = {
 
 export default function InvitePage() {
   return (
-    <main style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", minHeight: "100svh", width: "100vw", overflow: "hidden" }}>
+    <main className="auth-grid" style={{ display: "grid", minHeight: "100svh", width: "100%" }}>
+      <style>{`
+        .auth-grid { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+        .auth-right { padding: 40px 48px; }
+        @media (max-width: 1024px) {
+          .auth-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 640px) {
+          .auth-right { padding: 32px 20px; }
+        }
+      `}</style>
       {/* Left panel — light */}
       <div
         style={{
@@ -92,7 +102,7 @@ export default function InvitePage() {
             <br />
             Athena just makes them instant."
           </p>
-          <p style={{ fontSize: 13, fontWeight: 400, color: "#a1a1aa", fontFamily: "monospace" }}>~ Kaila M., Operations Lead</p>
+          <p style={{ fontSize: 13, fontWeight: 400, color: "#a1a1aa", fontFamily: "monospace" }}>~ Brandon Nyakea, Uzski Corp</p>
         </div>
 
         {/* Floating paths — dark on light */}
@@ -104,15 +114,14 @@ export default function InvitePage() {
 
       {/* Right panel */}
       <div
+        className="auth-right"
         style={{
           position: "relative",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          padding: "40px 48px",
           background: "#ffffff",
           minHeight: "100svh",
-          overflow: "hidden",
           minWidth: 0,
         }}
       >
