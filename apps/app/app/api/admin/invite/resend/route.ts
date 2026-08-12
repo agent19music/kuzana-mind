@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       emailAddress: normalizedEmail,
       role: inviteRole,
       inviterUserId: userId ?? undefined,
-      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/invite`,
+      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.athena.uzskicorp.agency"}/invite`,
     });
     return NextResponse.json({ id: invitation.id, email: invitation.emailAddress });
   } catch (err) {

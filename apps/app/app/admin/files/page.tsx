@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { UploadSimple, Plus, FolderSimplePlus, CaretRight, CaretDown } from "@phosphor-icons/react";
 import DashboardShell from "../../../components/DashboardShell";
+import PageFadeIn from "../../../components/PageFadeIn";
 import { Button } from "../../../components/Button";
 import UploadQueue, { type QueueItem } from "./UploadQueue";
 
@@ -276,7 +277,7 @@ export default function FilesPage() {
   // Each file is its own request so one bad file never blocks the rest of the
   // batch, and status (upload vs. indexing failure) is knowable per file.
   const processItem = useCallback(async (item: QueueItem) => {
-    updateItem(item.id, { status: "uploading", reason: undefined });
+    updateItem(item.id, { status: "uploading", reason: undefined, attempts: item.attempts + 1 });
 
     const formData = new FormData();
     formData.append("files", item.file, item.name);
@@ -328,6 +329,7 @@ export default function FilesPage() {
       file,
       name: fileDisplayName(file),
       status: "queued",
+      attempts: 0,
     }));
     setQueue((prev) => [...prev, ...newItems]);
     runQueue(newItems);
@@ -345,7 +347,7 @@ export default function FilesPage() {
   return (
     <DashboardShell>
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
+        <PageFadeIn style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
 
           {/* Hidden File Input */}
           <input
@@ -620,7 +622,7 @@ export default function FilesPage() {
             )}
           </div>
 
-        </div>
+        </PageFadeIn>
       </main>
     </DashboardShell>
   );

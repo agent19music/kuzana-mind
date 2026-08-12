@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "../../../components/Button";
 import DashboardShell from "../../../components/DashboardShell";
+import PageFadeIn from "../../../components/PageFadeIn";
 
 const PLANS = [
   {
@@ -336,7 +337,7 @@ export default function BillingClient({ used }: { used: Usage }) {
       `}</style>
 
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
-        <div className="billing-wrap" style={{ maxWidth: 880, margin: "0 auto" }}>
+        <PageFadeIn className="billing-wrap" style={{ maxWidth: 880, margin: "0 auto" }}>
 
           {/* Header */}
           <div style={{ marginBottom: 48 }}>
@@ -546,7 +547,7 @@ export default function BillingClient({ used }: { used: Usage }) {
             </div>
           </div>
 
-        </div>
+        </PageFadeIn>
       </main>
 
       {modal && <UpgradeModal plan={modal} onClose={() => setModal(null)} />}

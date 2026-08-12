@@ -2,6 +2,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import SettingsClient from "./SettingsClient";
 import DashboardShell from "../../../components/DashboardShell";
+import PageFadeIn from "../../../components/PageFadeIn";
 
 export default async function SettingsPage() {
   const { userId, orgId, orgRole } = await auth();
@@ -16,7 +17,7 @@ export default async function SettingsPage() {
   return (
     <DashboardShell>
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
+        <PageFadeIn style={{ maxWidth: 880, margin: "0 auto", padding: "56px 48px 80px" }}>
           <h1
             style={{
               fontSize: 32,
@@ -31,7 +32,7 @@ export default async function SettingsPage() {
           </h1>
 
           <SettingsClient orgName={org.name} orgLogo={org.imageUrl ?? null} />
-        </div>
+        </PageFadeIn>
       </main>
     </DashboardShell>
   );

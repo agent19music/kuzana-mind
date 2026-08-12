@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Analytics = {
   total_questions: number;
@@ -71,40 +71,59 @@ function VolumeChart({ data }: { data: { day: string; count: number }[] }) {
   );
 }
 
+// Module-level so it survives unmount/remount (tab switches, navigating away
+// and back) — the client fetches once per session and later mounts render
+// the cached cards immediately instead of showing "Loading…" again.
+let analyticsCache: Analytics | null = null;
+
 export default function AnalyticsClient() {
-  const [data, setData] = useState<Analytics | null>(null);
+  const [data, setData] = useState<Analytics | null>(analyticsCache);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(analyticsCache === null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const res = await fetch("/api/analytics", { cache: "no-store" });
         const json = await res.json();
+        if (cancelled) return;
         if (!res.ok) {
           setError(json.error ?? json.detail ?? "Could not load analytics.");
         } else {
+          analyticsCache = json;
           setData(json);
         }
       } catch {
-        setError("Could not reach the server.");
+        if (!cancelled) setError("Could not reach the server.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (loading) {
+  const derived = useMemo(() => {
+    if (!data) return null;
+    const answered = data.total_questions - data.unanswered_count;
+    const answerRate =
+      data.total_questions > 0 ? Math.round((answered / data.total_questions) * 100) : 0;
+    return { answered, answerRate };
+  }, [data]);
+
+  // Loading only blocks the first-ever fetch — once cached, stale cards stay
+  // on screen while a fresh fetch resolves in the background.
+  if (loading && !data) {
     return <p style={{ fontSize: 14, color: "#a3a3a3" }}>Loading…</p>;
   }
-  if (error) {
+  if (error && !data) {
     return <p style={{ fontSize: 14, color: "#dc2626" }}>{error}</p>;
   }
-  if (!data) return null;
+  if (!data || !derived) return null;
 
-  const answered = data.total_questions - data.unanswered_count;
-  const answerRate =
-    data.total_questions > 0 ? Math.round((answered / data.total_questions) * 100) : 0;
+  const { answered, answerRate } = derived;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>

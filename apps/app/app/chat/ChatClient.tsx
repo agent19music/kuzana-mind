@@ -5,6 +5,7 @@ import { ThinkingOrb } from "thinking-orbs";
 import DocumentCard from "../../components/chat/DocumentCard";
 import StaffCard from "../../components/chat/StaffCard";
 import DashboardShell from "../../components/DashboardShell";
+import PageFadeIn from "../../components/PageFadeIn";
 import { Button } from "../../components/Button";
 import { Toast } from "../../components/Toast";
 
@@ -236,7 +237,7 @@ export default function ChatClient() {
         @media (max-width: 900px) { .convo-rail { display: none; } }
       `}</style>
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden", background: "var(--background)" }}>
+      <PageFadeIn style={{ display: "flex", flex: 1, overflow: "hidden", background: "var(--background)" }}>
         {/* Conversations sidebar */}
         <aside
           className="convo-rail"
@@ -513,7 +514,7 @@ export default function ChatClient() {
             </p>
           </div>
         </div>
-      </div>
+      </PageFadeIn>
 
       <Toast message={toast} onDismiss={() => setToast(null)} />
     </DashboardShell>

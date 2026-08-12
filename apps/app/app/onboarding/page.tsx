@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/Button";
+import PageFadeIn from "@/components/PageFadeIn";
 
 const inputStyle = (focused: boolean): React.CSSProperties => ({
   width: "100%",
@@ -190,7 +191,7 @@ export default function OnboardingPage() {
         padding: "var(--space-8) var(--space-6)",
       }}
     >
-      <div
+      <PageFadeIn
         style={{
           width: "100%",
           maxWidth: 480,
@@ -401,7 +402,7 @@ export default function OnboardingPage() {
             </Button>
           </form>
         </div>
-      </div>
+      </PageFadeIn>
     </div>
   );
 }

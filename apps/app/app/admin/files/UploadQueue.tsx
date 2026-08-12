@@ -17,6 +17,7 @@ export type QueueItem = {
   name: string;
   status: QueueStatus;
   reason?: string;
+  attempts: number;
 };
 
 function statusLabel(item: QueueItem): string {
@@ -24,7 +25,7 @@ function statusLabel(item: QueueItem): string {
     case "queued":
       return "Waiting…";
     case "uploading":
-      return "Uploading and indexing…";
+      return item.attempts > 1 ? "Reuploading and indexing…" : "Uploading and indexing…";
     case "done":
       return "Indexed";
     case "chunk_failed":

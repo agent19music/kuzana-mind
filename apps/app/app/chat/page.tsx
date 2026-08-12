@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DashboardShell from "../../components/DashboardShell";
+import PageFadeIn from "../../components/PageFadeIn";
 import ChatClient from "./ChatClient";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
@@ -47,6 +48,7 @@ export default async function ChatPage() {
             background: "#FAFAFA",
           }}
         >
+        <PageFadeIn style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
           <h1
             style={{
               fontSize: 24,
@@ -82,6 +84,7 @@ export default async function ChatPage() {
               Connect a source
             </Link>
           )}
+        </PageFadeIn>
         </main>
       </DashboardShell>
     );

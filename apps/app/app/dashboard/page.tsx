@@ -2,6 +2,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import DashboardShell from "../../components/DashboardShell";
+import PageFadeIn from "../../components/PageFadeIn";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 const BACKEND_API_SECRET = process.env.BACKEND_API_SECRET ?? "";
@@ -108,7 +109,7 @@ export default async function DashboardPage() {
         }
       `}</style>
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
-        <div className="dashboard-wrap" style={{ maxWidth: 880, margin: "0 auto" }}>
+        <PageFadeIn className="dashboard-wrap" style={{ maxWidth: 880, margin: "0 auto" }}>
 
           {/* Page heading */}
           <div style={{ marginBottom: 40 }}>
@@ -266,7 +267,7 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-        </div>
+        </PageFadeIn>
       </main>
     </DashboardShell>
   );
