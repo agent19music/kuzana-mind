@@ -151,7 +151,7 @@ export default function Hero() {
           }}
         >
           <Link
-            href="/waitlist"
+            href="https://app.athena.uzskicorp.agency/register"
             style={{
               textDecoration: "none",
               display: "inline-flex",

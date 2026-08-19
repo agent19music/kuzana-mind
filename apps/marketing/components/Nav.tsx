@@ -99,7 +99,7 @@ export default function Nav() {
             How it works
           </a>
           <Link
-            href="/waitlist"
+            href="https://app.athena.uzskicorp.agency/register"
             style={{
               textDecoration: "none",
               height: 40,

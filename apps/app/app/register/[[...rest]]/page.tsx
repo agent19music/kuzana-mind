@@ -93,7 +93,7 @@ export default function RegisterPage() {
             <br />
             for answers your docs already have."
           </p>
-          <p style={{ fontSize: 13, fontWeight: 400, color: "#a1a1aa", fontFamily: "monospace" }}>~ Kaila M., Operations Lead</p>
+          <p style={{ fontSize: 13, fontWeight: 400, color: "#a1a1aa", fontFamily: "monospace" }}>~ Brandon N., IT Professional</p>
         </div>
 
         {/* Floating paths — dark on light */}

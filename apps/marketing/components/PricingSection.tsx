@@ -266,7 +266,7 @@ export default function PricingSection() {
 
               {/* CTA — always at the bottom */}
               <Link
-                href="/waitlist"
+                href="https://app.athena.uzskicorp.agency/register"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
