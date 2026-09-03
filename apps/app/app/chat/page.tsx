@@ -20,14 +20,26 @@ export default async function ChatPage() {
   // (chunkCount stays null) on any fetch error so a flaky backend blocks
   // nobody; only a confirmed zero hides the chat UI.
   let chunkCount: number | null = null;
+  let suggestions: string[] = [];
   try {
     const token = await getToken();
     if (token) {
-      const res = await fetch(`${BACKEND_URL}/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const headers = { Authorization: `Bearer ${token}` };
+      const statsRes = await fetch(`${BACKEND_URL}/stats`, {
+        headers,
         cache: "no-store",
       });
-      if (res.ok) chunkCount = (await res.json()).chunk_count ?? null;
+      if (statsRes.ok) chunkCount = (await statsRes.json()).chunk_count ?? null;
+      if (chunkCount !== 0) {
+        const suggestRes = await fetch(`${BACKEND_URL}/suggested-questions`, {
+          headers,
+          cache: "no-store",
+        });
+        if (suggestRes.ok) {
+          const body = await suggestRes.json();
+          suggestions = Array.isArray(body.questions) ? body.questions.filter((q: unknown) => typeof q === "string") : [];
+        }
+      }
     }
   } catch {
     /* chunkCount stays null — fail open */
@@ -62,7 +74,7 @@ export default async function ChatPage() {
           </h1>
           <p style={{ fontSize: 14.5, color: "#888", lineHeight: 1.6, maxWidth: 420, marginBottom: 28 }}>
             {isAdmin
-              ? "Chat needs something to search. Connect Notion or a Google Doc first, then come back here."
+              ? "Chat needs something to search. Connect Notion, a Google Doc, or upload a file first, then come back here."
               : "Chat needs something to search. Ask an admin on your team to connect a data source first."}
           </p>
           {isAdmin && (
@@ -90,5 +102,5 @@ export default async function ChatPage() {
     );
   }
 
-  return <ChatClient />;
+  return <ChatClient suggestions={suggestions} />;
 }

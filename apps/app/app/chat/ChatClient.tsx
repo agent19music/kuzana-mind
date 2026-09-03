@@ -35,13 +35,6 @@ type Message =
 
 type ConversationSummary = { id: string; title: string; updated_at: string };
 
-const SUGGESTIONS = [
-  "How do I submit an expense claim?",
-  "What is our leave policy?",
-  "How does the client billing workflow work?",
-  "How do I get IT access to a new tool?",
-];
-
 // While a request is in flight, cycle the orb through phases so it reads as
 // active work ("searching your docs" → "composing an answer") rather than a
 // static spinner. The label advances on a timer and holds on the last phase.
@@ -104,7 +97,7 @@ function fromStored(m: StoredMessage): Message {
   };
 }
 
-export default function ChatClient() {
+export default function ChatClient({ suggestions = [] }: { suggestions?: string[] }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -417,10 +410,13 @@ export default function ChatClient() {
                       What do you need to know?
                     </h1>
                     <p style={{ fontSize: 16, color: "var(--foreground-muted)", lineHeight: 1.6 }}>
-                      Ask anything about how the team works.
+                      {suggestions.length > 0
+                        ? "These questions come from your connected docs and uploads."
+                        : "Ask anything about how the team works."}
                     </p>
                   </div>
 
+                  {suggestions.length > 0 && (
                   <div
                     style={{
                       display: "flex",
@@ -430,12 +426,13 @@ export default function ChatClient() {
                       maxWidth: 560,
                     }}
                   >
-                    {SUGGESTIONS.map((s) => (
+                    {suggestions.map((s) => (
                       <Button key={s} onClick={() => submit(s)} variant="secondary" full>
                         {s}
                       </Button>
                     ))}
                   </div>
+                  )}
                 </div>
               )}
 

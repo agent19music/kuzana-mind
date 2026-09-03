@@ -37,6 +37,7 @@ from database import Conversation, DocumentChunk, Message, ensure_organization_e
 from embeddings import embed_documents
 from ingest import create_ingest_job, run_ingestion
 from retrieval import answer_query
+from suggested_questions import questions_for_org
 
 
 @asynccontextmanager
@@ -134,6 +135,19 @@ async def stats(auth_ctx: AuthContext = Depends(require_read_auth)):
         "last_synced": last_chunk.created_at.isoformat() if last_chunk else None,
         "source_types": [r[0] for r in source_rows if r[0]],
     }
+
+
+@app.get("/suggested-questions")
+async def suggested_questions(auth_ctx: AuthContext = Depends(require_read_auth)):
+    """Starter prompts for the empty chat, grounded on this org's chunks.
+
+    Empty list when there is nothing indexed or Gemini/retrieval cannot
+    produce questions that would actually match — the UI must not fall back
+    to generic HR copy.
+    """
+    org_id = auth_ctx.clerk_org_id
+    questions = await questions_for_org(org_id)
+    return {"questions": questions}
 
 
 # A Tally form with more responses than this collapses into one expandable

@@ -326,6 +326,72 @@ def _sentiment_sync(texts: list[str]) -> list[str]:
     return out
 
 
+_STARTER_SYSTEM = (
+    "You write starter questions for an internal company knowledge chat. "
+    "You are given short excerpts from this organisation's own documents. "
+    "Output JSON only: {\"questions\": [\"...\", \"...\"]}. "
+    "Write 4 questions a staff member would actually type. Each question MUST "
+    "be answerable from the excerpts — names, processes, policies, or facts "
+    "that appear there. Prefer uploaded files when those excerpts are present. "
+    "Be specific. Do not invent generic HR/IT questions (expense claims, leave "
+    "policy, IT access) unless those topics are in the excerpts. Sentence case, "
+    "no numbering, no quotes around the questions."
+)
+
+
+def _starter_questions_sync(excerpts: list[dict]) -> list[str]:
+    blocks = []
+    for i, item in enumerate(excerpts, start=1):
+        source = item.get("source_type") or "doc"
+        title = (item.get("title") or "Untitled").strip()
+        text = (item.get("excerpt") or "").strip()
+        blocks.append(f"[{i} | {source} | {title}]\n{text}")
+    prompt = "Excerpts:\n\n" + "\n\n".join(blocks) + "\n\nJSON:"
+    kwargs = dict(
+        system_instruction=_STARTER_SYSTEM,
+        temperature=0.3,
+        max_output_tokens=400,
+        response_mime_type="application/json",
+    )
+    try:
+        kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    except Exception:  # noqa: BLE001
+        pass
+    config = types.GenerateContentConfig(**kwargs)
+
+    def build(model: str) -> str:
+        resp = _client.models.generate_content(model=model, contents=prompt, config=config)
+        return resp.text or ""
+
+    data = _parse_json(_call_gemini(build))
+    raw = data.get("questions") if isinstance(data, dict) else data
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw if isinstance(raw, list) else []:
+        q = " ".join(str(item).split()).strip().rstrip("?") + "?"
+        key = q.lower()
+        if len(q) < 12 or key in seen:
+            continue
+        seen.add(key)
+        out.append(q[:140])
+        if len(out) >= 6:
+            break
+    return out
+
+
+async def suggest_starter_questions(excerpts: list[dict]) -> list[str]:
+    """Questions grounded on the given excerpts. Empty list on failure — never
+    invent a generic fallback set; the UI should show no chips rather than
+    questions the corpus cannot answer."""
+    if not excerpts:
+        return []
+    try:
+        return await asyncio.to_thread(_starter_questions_sync, excerpts)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Starter question generation failed: {exc}")
+        return []
+
+
 async def classify_sentiment(texts: list[str]) -> list[str]:
     """Sentiment per answer, batched. Returns one label per input, defaulting to
     "neutral" — a failed batch must not drop answers or shift the alignment
