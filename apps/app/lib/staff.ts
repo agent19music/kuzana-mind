@@ -22,29 +22,33 @@ function formatDate(iso: string | number): string {
 // Shared by the staff page's initial server render and the /api/admin/staff
 // poll endpoint, so both return identically-shaped data.
 export async function loadStaff(orgId: string) {
-  const client = await clerkClient();
-  const [memberships, invitations, self] = await Promise.all([
-    client.organizations.getOrganizationMembershipList({ organizationId: orgId, limit: 100 }),
-    client.organizations.getOrganizationInvitationList({ organizationId: orgId, status: ["pending"] }),
-    currentUser(),
-  ]);
+  try {
+    const client = await clerkClient();
+    const [memberships, invitations, self] = await Promise.all([
+      client.organizations.getOrganizationMembershipList({ organizationId: orgId, limit: 100 }),
+      client.organizations.getOrganizationInvitationList({ organizationId: orgId, status: ["pending"] }),
+      currentUser(),
+    ]);
 
-  const members: Member[] = memberships.data.map((m) => ({
-    id: m.id,
-    role: m.role,
-    email: m.publicUserData?.identifier ?? "",
-    name: [m.publicUserData?.firstName, m.publicUserData?.lastName].filter(Boolean).join(" "),
-    joinedAt: formatDate(m.createdAt),
-  }));
+    const members: Member[] = memberships.data.map((m) => ({
+      id: m.id,
+      role: m.role,
+      email: m.publicUserData?.identifier ?? "",
+      name: [m.publicUserData?.firstName, m.publicUserData?.lastName].filter(Boolean).join(" "),
+      joinedAt: formatDate(m.createdAt),
+    }));
 
-  const pendingInvitations: PendingInvitation[] = invitations.data.map((i) => ({
-    id: i.id,
-    email: i.emailAddress,
-    role: i.role,
-    invitedAt: formatDate(i.createdAt),
-  }));
+    const pendingInvitations: PendingInvitation[] = invitations.data.map((i) => ({
+      id: i.id,
+      email: i.emailAddress,
+      role: i.role,
+      invitedAt: formatDate(i.createdAt),
+    }));
 
-  const currentUserEmails = (self?.emailAddresses ?? []).map((e) => e.emailAddress.toLowerCase());
+    const currentUserEmails = (self?.emailAddresses ?? []).map((e) => e.emailAddress.toLowerCase());
 
-  return { members, pendingInvitations, currentUserEmails };
+    return { members, pendingInvitations, currentUserEmails };
+  } catch {
+    return { members: [], pendingInvitations: [], currentUserEmails: [] };
+  }
 }

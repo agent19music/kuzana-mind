@@ -5,14 +5,24 @@ import DashboardShell from "../../../components/DashboardShell";
 import PageFadeIn from "../../../components/PageFadeIn";
 
 export default async function SettingsPage() {
-  const { userId, orgId, orgRole } = await auth();
+  const { userId, orgId, orgRole, orgSlug } = await auth();
 
   if (!userId) redirect("/login");
   if (!orgId) redirect("/onboarding");
   if (orgRole !== "org:admin") redirect("/dashboard");
 
-  const client = await clerkClient();
-  const org = await client.organizations.getOrganization({ organizationId: orgId });
+  let orgName = orgSlug?.replace(/-/g, " ") || "Organisation";
+  let orgLogo: string | null = null;
+  try {
+    const client = await clerkClient();
+    const org = await client.organizations.getOrganization({ organizationId: orgId });
+    orgName = org.name;
+    orgLogo = org.imageUrl ?? null;
+  } catch {
+    // Clerk Backend API errors (bad secret, missing org, 5xx) used to crash
+    // this page with an empty Server Components error. Dashboard already
+    // fails open; match that.
+  }
 
   return (
     <DashboardShell>
@@ -31,7 +41,7 @@ export default async function SettingsPage() {
             Settings
           </h1>
 
-          <SettingsClient orgName={org.name} orgLogo={org.imageUrl ?? null} />
+          <SettingsClient orgName={orgName} orgLogo={orgLogo} />
         </PageFadeIn>
       </main>
     </DashboardShell>

@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { X } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
-import PdfPreview from "./PdfPreview";
 import DocxPreview from "./DocxPreview";
 import { Button } from "../Button";
+
+const PdfPreview = dynamic(() => import("./PdfPreview"), { ssr: false });
 
 type PreviewData =
   | { mode: "text"; title: string | null; content: string }
