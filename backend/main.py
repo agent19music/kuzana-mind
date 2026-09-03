@@ -10,6 +10,21 @@ from dotenv import load_dotenv
 # in backend/CLAUDE.md) never otherwise loads backend/.env.
 load_dotenv()
 
+import sentry_sdk
+
+_sentry_dsn = os.getenv("SENTRY_DSN")
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        send_default_pii=True,
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+        profile_session_sample_rate=float(
+            os.getenv("SENTRY_PROFILE_SESSION_SAMPLE_RATE", "1.0")
+        ),
+        profile_lifecycle="trace",
+        environment=os.getenv("SENTRY_ENVIRONMENT", "development"),
+    )
+
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -88,6 +103,12 @@ def _title_from(query: str, limit: int = 60) -> str:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+if os.getenv("SENTRY_DEBUG_ROUTE", "").lower() in ("1", "true", "yes"):
+    @app.get("/sentry-debug")
+    async def trigger_error():
+        return 1 / 0
 
 
 @app.get("/stats")
