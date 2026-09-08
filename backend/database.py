@@ -375,6 +375,67 @@ class IntegrationInterest(Base):
     )
 
 
+class OrgSubscription(Base):
+    """Effective paid / promo entitlement for one Clerk org.
+
+    Not under RLS — billing metadata only; every read filters by clerk_org_id.
+    `source` is `paddle` (card subscription) or `promo` (in-app redeem, no card).
+    """
+    __tablename__ = "org_subscriptions"
+
+    id                     = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    clerk_org_id           = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    plan                   = Column(String, nullable=False, default="starter")  # starter | pro | plus
+    status                 = Column(String, nullable=False, default="active")   # active | past_due | canceled | trialing
+    source                 = Column(String, nullable=False)                     # paddle | promo
+    seats                  = Column(Integer, nullable=False, default=1)
+    current_period_end     = Column(DateTime(timezone=True))
+    paddle_customer_id     = Column(String)
+    paddle_subscription_id = Column(String, index=True)
+    created_at             = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at             = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+
+    id              = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    code            = Column(String, unique=True, nullable=False)
+    grant_plan      = Column(String, nullable=False, default="pro")
+    duration_days   = Column(Integer, nullable=False, default=30)
+    max_redemptions = Column(Integer)
+    expires_at      = Column(DateTime(timezone=True))
+    active          = Column(Boolean, nullable=False, default=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PromoRedemption(Base):
+    """One early-bird / promo grant per org (unique on clerk_org_id)."""
+    __tablename__ = "promo_redemptions"
+
+    id            = Column(UUID, primary_key=True, server_default=text("gen_random_uuid()"))
+    promo_code_id = Column(UUID, ForeignKey("promo_codes.id", ondelete="CASCADE"), nullable=False)
+    clerk_org_id  = Column(
+        String,
+        ForeignKey("organizations.clerk_org_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    redeemed_by   = Column(String, nullable=False)
+    redeemed_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("promo_code_id", "clerk_org_id", name="uq_promo_redemptions_code_org"),
+    )
+
+
 def init_db():
     # Schema is managed by Alembic. This only ensures the vector extension exists
     # for local dev runs where alembic upgrade head hasn't been called yet.

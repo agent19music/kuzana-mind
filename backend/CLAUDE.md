@@ -29,6 +29,7 @@ backend/
 ├── generation.py        # LLM answer synthesis — retried via gemini_retry, then falls back to GEN_FALLBACK_MODEL
 ├── gemini_retry.py      # Shared retry/backoff classification (429/5xx) used by embeddings.py + generation.py
 ├── ingest.py            # Document loading (Notion / public docs / Tally / mock) → chunk → embed → upsert
+├── discord_alerts.py    # Sentry before_send → Discord incoming webhook (free-plan path)
 ├── database.py          # SQLAlchemy models: DocumentChunk, Organization, OrganizationMember, IngestJob
 └── sample_docs/         # Local markdown files used when USE_MOCK=true
 ```
@@ -141,7 +142,7 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
    phrases it, grounded strictly on that breakdown. No match → falls through
    to step 3 unchanged.
 3. Cosine similarity search via pgvector (HNSW index) over `documents`, org-scoped via `session_for_org`
-4. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.75`) → synthesise an answer from the chunk
+4. If top score ≥ `SIMILARITY_THRESHOLD` (default `0.65`) → synthesise an answer from the chunk
 5. Else → honest "no documentation on this" response. There used to be a
    `staff_fallback()` step here matching against a single global
    `staff_directory.json` of fictional demo employees — it was never
@@ -177,23 +178,29 @@ Trigger ingestion: `POST /ingest` with `X-API-Key` header. Body **must** include
 | `NOTION_ROOT_PAGE_ID` | No | `""` | Notion parent page ID to crawl (global fallback) |
 | `TALLY_API_KEY` | No | `""` | Tally personal access token (global fallback) |
 | `TALLY_FORM_IDS` | No | `""` | Comma-separated Tally form IDs to pull submissions from (global fallback) |
-| `DRIVE_FOLDER_ID` | Post-MVP | — | Google Drive folder ID |
+| `DRIVE_FOLDER_ID` | Post-MVP | — | Google Drive folder ID (local/single-tenant fallback) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Post-MVP | — | Service account JSON string |
+| `SENTRY_DSN` | Prod | — | Enables Sentry. Unset = SDK not initialized |
+| `SENTRY_ENVIRONMENT` | No | `development` | Use `production` on Render |
+| `DISCORD_WEBHOOK_URL` | Prod (alerts) | — | Incoming webhook; `discord_alerts.before_send` posts on captured errors |
+| `SENTRY_DEBUG_ROUTE` | Local only | off | `true` exposes `GET /sentry-debug`. Never set on Render |
+
+Production env for these is the **Render** service `kuzana-mind`, not Cloud Run. See repo `AGENTS.md` for `DEPLOY_TARGET`.
 
 ---
 
 ## Running Locally
 
+Backend is Docker-only in this repo. Rebuild after Python or `requirements.txt` changes.
+
 ```bash
-# Start DB
-docker-compose up db
+# From repo root — Postgres + API
+docker compose up --build
 
-# In a second terminal
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+# API only (db already healthy)
+docker compose up --build backend
 
-# Trigger ingestion (once DB + backend are up)
+# Trigger ingestion (once API is up)
 # BACKEND_API_SECRET must match or be unset (dev mode)
 curl -X POST http://localhost:8000/ingest \
   -H "X-API-Key: <your secret>" \
@@ -201,7 +208,7 @@ curl -X POST http://localhost:8000/ingest \
   -d '{"org_id":"org_xxx","notion_api_key":"ntn_...","public_doc_ids":["doc_id_1"]}'
 ```
 
-Or start both together: `docker-compose up`
+Compose loads `backend/.env` and sets `DATABASE_URL` to the `db` service.
 
 ---
 
