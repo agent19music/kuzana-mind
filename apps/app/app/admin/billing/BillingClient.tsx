@@ -1,420 +1,630 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { initializePaddle, type Paddle } from "@paddle/paddle-js";
 import { Button } from "../../../components/Button";
 import DashboardShell from "../../../components/DashboardShell";
 import PageFadeIn from "../../../components/PageFadeIn";
+import {
+  isPaidEntitlement,
+  normalizePlan,
+  type BillingEntitlement,
+} from "../../../lib/billing";
+import {
+  requirePaddleClientToken,
+  requirePaddleEnvironment,
+} from "../../../lib/paddle-env";
+import {
+  TIERS,
+  type BillingInterval,
+  type Tier,
+} from "../../../lib/pricing-tiers";
 
-const PLANS = [
-  {
-    id: "starter",
-    name: "Starter",
-    price: "Free",
-    priceMonthly: 0,
-    chunks: "2,500",
-    members: "20",
-    sources: "2",
-    features: ["Notion + Google Docs", "Manual sync", "7-day history", "Community support"],
-    current: true,
-    highlight: false,
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: "$10",
-    priceMonthly: 10,
-    chunks: "25,000",
-    members: "100",
-    sources: "Unlimited",
-    features: ["All starter features", "Google Drive connector", "Weekly auto-sync", "Audit logs", "Priority support", "Custom domain"],
-    current: false,
-    highlight: true,
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    price: "Custom",
-    priceMonthly: null,
-    chunks: "Unlimited",
-    members: "Unlimited",
-    sources: "Unlimited",
-    features: ["All Pro features", "SSO / SAML", "99.9% SLA", "Dedicated sync", "On-prem option", "Custom integrations"],
-    current: false,
-    highlight: false,
-  },
-];
-
-type Usage = { chunks: number; maxChunks: number; members: number; maxMembers: number };
-
-function UpgradeModal({ plan, onClose }: { plan: typeof PLANS[1]; onClose: () => void }) {
-  const [step, setStep] = useState<"review" | "payment" | "done">("review");
-  const [card, setCard] = useState({ number: "", expiry: "", cvc: "" });
-
+function UsageBar({ label, used, max }: { label: string; used: number; max: number | null }) {
+  const capped = max == null ? 0 : Math.min((used / Math.max(max, 1)) * 100, 100);
+  const warn = max != null && used / Math.max(max, 1) > 0.75;
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-        backdropFilter: "blur(2px)",
-      }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 16,
-          width: 480,
-          maxWidth: "calc(100vw - 32px)",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)",
-          overflow: "hidden",
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Modal header */}
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ fontSize: 12.5, color: "#888", fontWeight: 400 }}>{label}</span>
+        <span style={{ fontSize: 12.5, color: warn ? "#D97706" : "#aaa", fontVariantNumeric: "tabular-nums" }}>
+          {used.toLocaleString()}
+          {max == null ? " / Unlimited" : ` / ${max.toLocaleString()}`}
+        </span>
+      </div>
+      <div style={{ height: 5, background: "#F0F0F0", borderRadius: 99, overflow: "hidden" }}>
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "24px 28px 20px",
-            borderBottom: "1px solid #F0F0F0",
+            height: "100%",
+            width: max == null ? "8%" : `${capped}%`,
+            background: warn
+              ? "linear-gradient(90deg, #F59E0B, #FBBF24)"
+              : "linear-gradient(90deg, #2563EB, #60A5FA)",
+            borderRadius: 99,
+            transition: "width 600ms ease-out",
           }}
-        >
-          <h2 style={{ fontSize: 20, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
-            {plan.name} · {plan.price}/mo
-          </h2>
-          <Button
-            onClick={onClose}
-            variant="ghost"
-            size="icon-lg"
-            style={{ fontSize: 20, color: "#ccc", lineHeight: 1 }}
-          >
-            ×
-          </Button>
-        </div>
-
-        {step === "done" ? (
-          <div style={{ padding: "48px 28px", textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
-            <h3 style={{ fontSize: 20, fontWeight: 400, color: "#111", letterSpacing: "-0.02em", marginBottom: 8 }}>
-              You&apos;re on {plan.name}
-            </h3>
-            <p style={{ fontSize: 14, color: "#888", lineHeight: 1.6, marginBottom: 32 }}>
-              Your plan has been upgraded. New limits are active immediately.
-            </p>
-            <Button onClick={onClose} variant="primary-dark" size="lg">
-              Done
-            </Button>
-          </div>
-        ) : step === "review" ? (
-          <div>
-            <div style={{ padding: "24px 28px", borderBottom: "1px solid #F0F0F0" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  [`${plan.chunks} document chunks`, "Up from 2,500"],
-                  [`${plan.members} team members`, "Up from 20"],
-                  ["Google Drive connector", "Full Shared Drive sync"],
-                  ["Weekly auto-sync", "vs. manual only"],
-                  ["Audit logs", "All query history"],
-                ].map(([title, sub]) => (
-                  <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                    <span style={{ color: "#22c55e", flexShrink: 0, fontSize: 15, lineHeight: 1.3 }}>✓</span>
-                    <div>
-                      <span style={{ fontSize: 13.5, fontWeight: 400, color: "#222" }}>{title}</span>
-                      <span style={{ fontSize: 12, color: "#aaa", marginLeft: 8 }}>{sub}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ padding: "20px 28px", borderBottom: "1px solid #F0F0F0", background: "#FAFAFA" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 13.5, color: "#888" }}>Pro plan · per user / month</span>
-                <span style={{ fontSize: 13.5, fontWeight: 400, color: "#111", fontVariantNumeric: "tabular-nums" }}>{plan.price} / user / mo</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 13.5, color: "#888" }}>Billed today</span>
-                <span style={{ fontSize: 13.5, fontWeight: 400, color: "#111", fontVariantNumeric: "tabular-nums" }}>{plan.price}</span>
-              </div>
-            </div>
-
-            <div style={{ padding: "20px 28px" }}>
-              <Button
-                onClick={() => setStep("payment")}
-                variant="primary"
-                size="lg"
-                style={{ width: "100%" }}
-              >
-                Continue to payment →
-              </Button>
-              <p style={{ fontSize: 11, color: "#bbb", textAlign: "center", marginTop: 10 }}>
-                Cancel anytime. No lock-in.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div style={{ padding: "24px 28px" }}>
-            <p style={{ fontSize: 12, color: "#aaa", marginBottom: 20 }}>Payment details</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 400, color: "#666", display: "block", marginBottom: 6 }}>
-                  Card number
-                </label>
-                <input
-                  type="text"
-                  placeholder="1234 5678 9012 3456"
-                  value={card.number}
-                  onChange={e => setCard(c => ({ ...c, number: e.target.value }))}
-                  maxLength={19}
-                  className="payment-input"
-                  style={{
-                    width: "100%",
-                    border: "1px solid #E2E2E2",
-                    borderRadius: 8,
-                    padding: "10px 14px",
-                    fontSize: 14,
-                    color: "#111",
-                    outline: "none",
-                    background: "#FAFAFA",
-                    boxSizing: "border-box",
-                    fontFamily: "monospace",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 400, color: "#666", display: "block", marginBottom: 6 }}>
-                    Expiry
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="MM / YY"
-                    value={card.expiry}
-                    onChange={e => setCard(c => ({ ...c, expiry: e.target.value }))}
-                    maxLength={7}
-                    className="payment-input"
-                    style={{
-                      width: "100%",
-                      border: "1px solid #E2E2E2",
-                      borderRadius: 8,
-                      padding: "10px 14px",
-                      fontSize: 14,
-                      color: "#111",
-                      outline: "none",
-                      background: "#FAFAFA",
-                      boxSizing: "border-box",
-                      fontFamily: "monospace",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 400, color: "#666", display: "block", marginBottom: 6 }}>
-                    CVC
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="•••"
-                    value={card.cvc}
-                    onChange={e => setCard(c => ({ ...c, cvc: e.target.value }))}
-                    maxLength={4}
-                    className="payment-input"
-                    style={{
-                      width: "100%",
-                      border: "1px solid #E2E2E2",
-                      borderRadius: 8,
-                      padding: "10px 14px",
-                      fontSize: 14,
-                      color: "#111",
-                      outline: "none",
-                      background: "#FAFAFA",
-                      boxSizing: "border-box",
-                      fontFamily: "monospace",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-            <Button
-              onClick={() => setStep("done")}
-              variant="primary-dark"
-              size="lg"
-              style={{ width: "100%" }}
-            >
-              Upgrade to {plan.name} — {plan.price}/mo
-            </Button>
-            <p style={{ fontSize: 11, color: "#bbb", textAlign: "center", marginTop: 10 }}>
-              Secured · 256-bit encryption
-            </p>
-          </div>
-        )}
+        />
       </div>
     </div>
   );
 }
 
-// Highlighted "Pro" plan card — dark, no banner. Mirrors the highlighted-card
-// treatment in apps/marketing/components/PricingSection.tsx for visual
-// consistency between the landing page and the in-app billing page.
-function ProCard({ plan, onUpgrade }: { plan: typeof PLANS[1]; onUpgrade: () => void }) {
+function RedeemPanel({ onRedeemed }: { onRedeemed: (e: BillingEntitlement) => void }) {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
+
+  async function redeem() {
+    setBusy(true);
+    setError("");
+    setOk("");
+    try {
+      const res = await fetch("/api/billing/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg =
+          typeof data.detail === "string"
+            ? data.detail
+            : data.error || data.detail?.message || data.message || "Could not redeem code";
+        throw new Error(msg);
+      }
+      setOk("Pro unlocked for 30 days.");
+      onRedeemed(data as BillingEntitlement);
+      setCode("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not redeem code");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div
       style={{
-        background: "#111",
-        borderRadius: 14,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        boxShadow: "0 4px 24px rgba(0,0,0,0.16), 0 1px 4px rgba(0,0,0,0.08)",
+        background: "#fff",
+        border: "1px solid #E8E8E8",
+        borderRadius: 12,
+        padding: "24px 28px",
+        marginBottom: 32,
+        boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
       }}
     >
-      <div style={{ padding: "24px 22px 22px", display: "flex", flexDirection: "column", flex: 1 }}>
+      <p style={{ fontSize: 16, fontWeight: 400, color: "#111", margin: "0 0 8px" }}>
+        Redeem a promo code
+      </p>
+      <p style={{ fontSize: 13, color: "#888", margin: "0 0 16px", lineHeight: 1.5 }}>
+        Early access codes grant a month of Pro with no card required.
+      </p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="ATHENA-EARLY"
+          className="payment-input"
+          style={{
+            flex: 1,
+            minWidth: 180,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid #E5E5E5",
+            fontSize: 14,
+            fontWeight: 400,
+            color: "#111",
+            outline: "none",
+          }}
+        />
+        <Button onClick={redeem} variant="primary-dark" disabled={busy || !code.trim()}>
+          {busy ? "Redeeming…" : "Redeem"}
+        </Button>
+      </div>
+      {error && <p style={{ fontSize: 12.5, color: "#DC2626", margin: "10px 0 0" }}>{error}</p>}
+      {ok && <p style={{ fontSize: 12.5, color: "#16A34A", margin: "10px 0 0" }}>{ok}</p>}
+    </div>
+  );
+}
+
+type Props = {
+  initial: BillingEntitlement;
+  orgId: string;
+  countryCode?: string;
+  customerEmail?: string | null;
+};
+
+export default function BillingClient({
+  initial,
+  orgId,
+  countryCode,
+  customerEmail,
+}: Props) {
+  const router = useRouter();
+  const [entitlement, setEntitlement] = useState(initial);
+  const [interval, setInterval] = useState<BillingInterval>("month");
+  const [paddle, setPaddle] = useState<Paddle | null>(null);
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  const [loadingPrices, setLoadingPrices] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"starter" | "pro" | "advanced">("advanced");
+
+  const plan = normalizePlan(entitlement.plan);
+  const isPaid = isPaidEntitlement(entitlement);
+  const limits = entitlement.limits;
+  const periodLabel = entitlement.period_end
+    ? new Date(entitlement.period_end).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const environment = requirePaddleEnvironment();
+        const token = requirePaddleClientToken();
+        const instance = await initializePaddle({ environment, token });
+        if (!cancelled && instance) setPaddle(instance);
+      } catch (err) {
+        if (!cancelled) {
+          setConfigError(
+            err instanceof Error ? err.message : "Paddle failed to initialize.",
+          );
+          setLoadingPrices(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!paddle) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingPrices(true);
+      try {
+        const preview = await paddle.PricePreview({
+          items: TIERS.map((t) => ({
+            priceId: t.priceId[interval],
+            quantity: 1,
+          })),
+          ...(countryCode ? { address: { countryCode } } : {}),
+        });
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const line of preview.data.details.lineItems) {
+          next[line.price.id] = line.formattedTotals.total;
+        }
+        setPrices(next);
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Could not load localized prices.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingPrices(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [paddle, interval, countryCode]);
+
+  async function refresh() {
+    try {
+      const res = await fetch("/api/billing/entitlement", { cache: "no-store" });
+      if (res.ok) setEntitlement(await res.json());
+    } catch {
+      /* keep current */
+    }
+    router.refresh();
+  }
+
+  function subscribe(tier: Tier) {
+    if (!paddle) return;
+    setBusy(true);
+    setError("");
+    try {
+      const priceId = tier.priceId[interval];
+      paddle.Checkout.open({
+        items: [{ priceId, quantity: 1 }],
+        ...(customerEmail ? { customer: { email: customerEmail } } : {}),
+        customData: {
+          clerk_org_id: orgId,
+          plan: tier.id,
+        },
+        settings: {
+          displayMode: "overlay",
+          variant: "one-page",
+          successUrl: `${window.location.origin}/admin/billing?upgraded=1`,
+        },
+      });
+      setTimeout(() => refresh(), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Checkout failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelSub() {
+    if (!confirm("Cancel at the end of the current billing period?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/billing/cancel", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || "Could not cancel");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cancel failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function tierCta(tier: Tier) {
+    const current = plan === tier.id && isPaid;
+    if (current) {
+      return (
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 13,
+            color: tier.highlight ? "rgba(255,255,255,0.45)" : "#aaa",
+            padding: "10px",
+            border: tier.highlight ? "1px solid rgba(255,255,255,0.12)" : "1px solid #F0F0F0",
+            borderRadius: 8,
+          }}
+        >
+          Current plan
+        </div>
+      );
+    }
+    if (!isPaid && tier.id === "starter" && plan === "starter") {
+      return (
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 13,
+            color: "#aaa",
+            padding: "10px",
+            border: "1px solid #F0F0F0",
+            borderRadius: 8,
+          }}
+        >
+          Current free plan
+        </div>
+      );
+    }
+    const rank = { starter: 0, pro: 1, advanced: 2 } as const;
+    if (isPaid && rank[plan] > rank[tier.id]) {
+      return (
+        <div
+          style={{
+            textAlign: "center",
+            fontSize: 13,
+            color: tier.highlight ? "rgba(255,255,255,0.45)" : "#aaa",
+            padding: "10px",
+            border: tier.highlight ? "1px solid rgba(255,255,255,0.12)" : "1px solid #F0F0F0",
+            borderRadius: 8,
+          }}
+        >
+          Included in {plan === "advanced" ? "Advanced" : "Pro"}
+        </div>
+      );
+    }
+    return (
+      <Button
+        onClick={() => subscribe(tier)}
+        variant={tier.highlight ? "secondary" : "primary-dark"}
+        disabled={busy || !!configError || !paddle || loadingPrices}
+        style={{ width: "100%" }}
+      >
+        {busy ? "Opening…" : `Subscribe to ${tier.name}`}
+      </Button>
+    );
+  }
+
+  function TierCard({ tier }: { tier: Tier }) {
+    const priceId = tier.priceId[interval];
+    const formatted = prices[priceId];
+    return (
+      <div
+        style={{
+          background: tier.highlight ? "#111" : "#fff",
+          border: tier.highlight ? "none" : "1px solid #E8E8E8",
+          borderRadius: 12,
+          padding: "28px 24px",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: tier.highlight
+            ? "0 4px 24px rgba(0,0,0,0.16), 0 1px 4px rgba(0,0,0,0.08)"
+            : "0 1px 4px rgba(0,0,0,0.04)",
+        }}
+      >
         <div style={{ marginBottom: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 12, fontWeight: 400, letterSpacing: "0.02em", color: "rgba(255,255,255,0.5)" }}>
-              {plan.name}
+          <p
+            style={{
+              fontSize: 12,
+              color: tier.highlight ? "rgba(255,255,255,0.5)" : "#888",
+              margin: "0 0 12px",
+              letterSpacing: "0.01em",
+            }}
+          >
+            {tier.name}
+          </p>
+          <p
+            style={{
+              fontSize: 32,
+              fontWeight: 400,
+              letterSpacing: "-0.03em",
+              color: tier.highlight ? "#fff" : "#111",
+              margin: "0 0 4px",
+              fontVariantNumeric: "tabular-nums",
+              minHeight: 40,
+            }}
+          >
+            {loadingPrices ? "…" : formatted ?? "—"}
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 400,
+                color: tier.highlight ? "rgba(255,255,255,0.45)" : "#aaa",
+                marginLeft: 4,
+              }}
+            >
+              /{interval === "month" ? "mo" : "yr"}
             </span>
-            <span style={{ fontSize: 11, fontWeight: 400, color: "rgba(255,255,255,0.6)", background: "rgba(255,255,255,0.12)", borderRadius: 20, padding: "3px 9px" }}>
-              Popular
-            </span>
-          </div>
-          <span style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.03em", color: "#fff", fontVariantNumeric: "tabular-nums" }}>{plan.price}</span>
-          <span style={{ fontSize: 13.5, color: "rgba(255,255,255,0.45)", marginLeft: 4 }}>/month, per user</span>
+          </p>
+          <p
+            style={{
+              fontSize: 13,
+              color: tier.highlight ? "rgba(255,255,255,0.5)" : "#bbb",
+              margin: 0,
+              lineHeight: 1.5,
+            }}
+          >
+            {tier.description}
+          </p>
         </div>
 
-        <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 20 }} />
+        <div
+          style={{
+            height: 1,
+            background: tier.highlight ? "rgba(255,255,255,0.1)" : "#F0F0F0",
+            marginBottom: 20,
+          }}
+        />
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, marginBottom: 28 }}>
-          {plan.features.map(f => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28, flex: 1 }}>
+          {tier.features.map((f) => (
             <div key={f} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>✓</span>
-              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>{f}</span>
+              <span style={{ color: tier.highlight ? "rgba(255,255,255,0.4)" : "#22c55e", fontSize: 13 }}>
+                ✓
+              </span>
+              <span
+                style={{
+                  fontSize: 13,
+                  color: tier.highlight ? "rgba(255,255,255,0.75)" : "#555",
+                }}
+              >
+                {f}
+              </span>
             </div>
           ))}
         </div>
 
-        <Button onClick={onUpgrade} variant="secondary" style={{ width: "100%" }}>
-          Get started
-        </Button>
+        {tierCta(tier)}
       </div>
-    </div>
-  );
-}
-
-export default function BillingClient({ used }: { used: Usage }) {
-  const [modal, setModal] = useState<typeof PLANS[1] | null>(null);
-  const [activeTab, setActiveTab] = useState<"pro" | "enterprise">("pro");
+    );
+  }
 
   return (
     <DashboardShell>
       <style>{`
         .billing-wrap { padding: 56px 48px 80px; }
-        .billing-plan-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
+        .billing-plan-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; gap: 16px; }
         .billing-usage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-        .billing-plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 48px; }
+        .billing-plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 48px; }
+        @media (max-width: 960px) {
+          .billing-plans-grid { grid-template-columns: 1fr; }
+        }
         .billing-plans-mobile { display: none; margin-bottom: 48px; }
-        .billing-history-row { display: grid; grid-template-columns: 120px 1fr 100px 80px; padding: 14px 24px; align-items: center; }
-        .billing-history-amount { }
-
         @media (max-width: 768px) {
           .billing-wrap { padding: 28px 20px 64px; }
-          .billing-plan-header { flex-direction: column; gap: 16px; align-items: stretch; }
+          .billing-plan-header { flex-direction: column; align-items: stretch; }
           .billing-usage-grid { grid-template-columns: 1fr; }
           .billing-plans-grid { display: none; }
           .billing-plans-mobile { display: block; }
-          .billing-history-row { grid-template-columns: 1fr auto; padding: 14px 16px; }
-          .billing-history-amount { display: none; }
           .payment-input { font-size: 16px !important; }
         }
       `}</style>
 
       <main style={{ flex: 1, overflowY: "auto", background: "#FAFAFA" }}>
-        <PageFadeIn className="billing-wrap" style={{ maxWidth: 880, margin: "0 auto" }}>
-
-          {/* Header */}
+        <PageFadeIn className="billing-wrap" style={{ maxWidth: 1080, margin: "0 auto" }}>
           <div style={{ marginBottom: 48 }}>
-            <h1 style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.025em", color: "#111", lineHeight: 1.1, margin: 0, textWrap: "balance" } as React.CSSProperties}>
+            <h1
+              style={
+                {
+                  fontSize: 32,
+                  fontWeight: 400,
+                  letterSpacing: "-0.025em",
+                  color: "#111",
+                  lineHeight: 1.1,
+                  margin: 0,
+                  textWrap: "balance",
+                } as React.CSSProperties
+              }
+            >
               Billing
             </h1>
           </div>
 
-          {/* Current plan */}
           <div
             style={{
               background: "#fff",
               border: "1px solid #E8E8E8",
               borderRadius: 12,
               padding: "28px 32px",
-              marginBottom: 32,
+              marginBottom: 24,
               boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
             }}
           >
             <div className="billing-plan-header">
-              <p style={{ fontSize: 22, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", margin: 0 }}>
-                Starter · Free
-              </p>
-              <Button onClick={() => setModal(PLANS[1])} variant="primary">
-                Upgrade to Pro
-              </Button>
+              <div>
+                <p
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 400,
+                    letterSpacing: "-0.02em",
+                    color: "#111",
+                    margin: 0,
+                  }}
+                >
+                  {entitlement.plan_name}
+                  {!isPaid ? " · Free" : ""}
+                  {isPaid && entitlement.source === "promo" ? " · Promo" : ""}
+                </p>
+                {periodLabel && (
+                  <p style={{ fontSize: 13, color: "#888", margin: "6px 0 0" }}>
+                    {entitlement.status === "canceled"
+                      ? `Access until ${periodLabel}`
+                      : entitlement.source === "promo"
+                        ? `Promo ends ${periodLabel}`
+                        : `Renews ${periodLabel}`}
+                  </p>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {isPaid && entitlement.source === "paddle" && entitlement.status !== "canceled" && (
+                  <Button onClick={cancelSub} variant="secondary" disabled={busy}>
+                    Cancel at period end
+                  </Button>
+                )}
+              </div>
             </div>
 
-            {/* Usage bars */}
+            {(error || configError) && (
+              <p style={{ fontSize: 13, color: "#DC2626", margin: "0 0 16px" }}>
+                {configError || error}
+              </p>
+            )}
+
             <div className="billing-usage-grid">
-              {[
-                { label: "Document chunks", used: used.chunks, max: used.maxChunks },
-                { label: "Team members", used: used.members, max: used.maxMembers },
-              ].map(bar => {
-                const pct = Math.min((bar.used / bar.max) * 100, 100);
-                const warn = pct > 75;
+              <UsageBar label="Document chunks" used={entitlement.chunks} max={limits.chunks} />
+              <UsageBar label="Team members" used={entitlement.members} max={limits.seats} />
+              <UsageBar label="Uploaded files" used={entitlement.files} max={limits.upload_files} />
+              <UsageBar
+                label="Data sources"
+                used={entitlement.source_count}
+                max={limits.source_types}
+              />
+            </div>
+          </div>
+
+          {!isPaid && (
+            <RedeemPanel
+              onRedeemed={(e) => {
+                setEntitlement(e);
+                router.refresh();
+              }}
+            />
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              marginBottom: 20,
+              flexWrap: "wrap",
+            }}
+          >
+            <h2
+              style={
+                {
+                  fontSize: 16,
+                  fontWeight: 400,
+                  letterSpacing: "-0.02em",
+                  color: "#111",
+                  margin: 0,
+                  textWrap: "balance",
+                } as React.CSSProperties
+              }
+            >
+              Plans
+            </h2>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: 4,
+                borderRadius: 9999,
+                border: "1px solid #E8E8E8",
+                background: "#fff",
+              }}
+              role="group"
+              aria-label="Billing interval"
+            >
+              {(
+                [
+                  { id: "month", label: "Monthly" },
+                  { id: "year", label: "Yearly" },
+                ] as const
+              ).map((opt) => {
+                const active = interval === opt.id;
                 return (
-                  <div key={bar.label}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                      <span style={{ fontSize: 12.5, color: "#888", fontWeight: 400 }}>{bar.label}</span>
-                      <span style={{ fontSize: 12.5, color: warn ? "#D97706" : "#aaa", fontVariantNumeric: "tabular-nums" }}>
-                        {bar.used.toLocaleString()} / {bar.max.toLocaleString()}
-                      </span>
-                    </div>
-                    <div style={{ height: 5, background: "#F0F0F0", borderRadius: 99, overflow: "hidden" }}>
-                      <div
-                        style={{
-                          height: "100%",
-                          width: `${pct}%`,
-                          background: warn
-                            ? "linear-gradient(90deg, #F59E0B, #FBBF24)"
-                            : "linear-gradient(90deg, #2563EB, #60A5FA)",
-                          borderRadius: 99,
-                          transition: "width 600ms ease-out",
-                        }}
-                      />
-                    </div>
-                  </div>
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setInterval(opt.id)}
+                    style={{
+                      height: 32,
+                      padding: "0 14px",
+                      borderRadius: 9999,
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 400,
+                      background: active ? "#111" : "transparent",
+                      color: active ? "#fff" : "#888",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Plan comparison */}
-          <h2 style={{ fontSize: 16, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", marginBottom: 20, textWrap: "balance" } as React.CSSProperties}>
-            Plans
-          </h2>
-
-          {/* Mobile: segmented tab + single card */}
           <div className="billing-plans-mobile">
-            {/* Segmented control */}
-            <div style={{ display: "flex", background: "#F0F0F0", borderRadius: 10, padding: 3, marginBottom: 16 }}>
-              {(["pro", "enterprise"] as const).map(tab => (
+            <div
+              style={{
+                display: "flex",
+                background: "#F0F0F0",
+                borderRadius: 10,
+                padding: 3,
+                marginBottom: 16,
+              }}
+            >
+              {TIERS.map((tier) => (
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className="btn-press"
+                  key={tier.id}
+                  type="button"
+                  onClick={() => setActiveTab(tier.id)}
                   style={{
                     flex: 1,
                     padding: "9px 0",
@@ -423,112 +633,38 @@ export default function BillingClient({ used }: { used: Usage }) {
                     fontSize: 14,
                     fontWeight: 400,
                     cursor: "pointer",
-                    background: activeTab === tab ? "#fff" : "transparent",
-                    color: activeTab === tab ? "#111" : "#888",
-                    boxShadow: activeTab === tab ? "0 1px 4px rgba(0,0,0,0.1)" : "none",
-                    transition: "background 150ms, color 150ms, box-shadow 150ms",
+                    background: activeTab === tier.id ? "#fff" : "transparent",
+                    color: activeTab === tier.id ? "#111" : "#888",
+                    boxShadow: activeTab === tier.id ? "0 1px 4px rgba(0,0,0,0.1)" : "none",
                   }}
                 >
-                  {tab === "pro" ? "Pro" : "Custom"}
+                  {tier.name}
                 </button>
               ))}
             </div>
-
-            {/* Active plan card */}
-            {activeTab === "pro" ? (
-              <ProCard plan={PLANS[1]} onUpgrade={() => setModal(PLANS[1])} />
-            ) : (
-              <div style={{ background: "#fff", border: "1px solid #E8E8E8", borderRadius: 12, padding: "28px 24px", display: "flex", flexDirection: "column", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-                <p style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: "0 0 4px" }}>
-                  Custom
-                </p>
-                <p style={{ fontSize: 13, color: "#bbb", margin: "0 0 24px", lineHeight: 1.5 }}>
-                  Unlimited chunks · Unlimited members
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28, flex: 1 }}>
-                  {PLANS[2].features.map(f => (
-                    <div key={f} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>
-                      <span style={{ fontSize: 13, color: "#555" }}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-                <Button href="mailto:hi@athena.app" variant="primary-dark" style={{ width: "100%" }}>
-                  Contact sales
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Desktop: 3-column grid */}
-          <div className="billing-plans-grid">
-            {PLANS.map(plan => plan.highlight ? (
-              <ProCard key={plan.id} plan={plan} onUpgrade={() => setModal(plan)} />
-            ) : (
-              <div
-                key={plan.id}
-                style={{
-                  background: "#fff",
-                  border: "1px solid #E8E8E8",
-                  borderRadius: 12,
-                  padding: "28px 24px",
-                  display: "flex",
-                  flexDirection: "column",
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-                }}
-              >
-                <p style={{ fontSize: 32, fontWeight: 400, letterSpacing: "-0.03em", color: "#111", margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}>
-                  {plan.price}
-                  {plan.priceMonthly !== null && plan.priceMonthly > 0 && (
-                    <span style={{ fontSize: 14, fontWeight: 400, color: "#aaa" }}>/mo</span>
-                  )}
-                </p>
-                <p style={{ fontSize: 13, color: "#bbb", margin: "0 0 24px", lineHeight: 1.5 }}>
-                  {plan.chunks} chunks · {plan.members} members
-                </p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28, flex: 1 }}>
-                  {plan.features.map(f => (
-                    <div key={f} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ color: "#22c55e", fontSize: 13 }}>✓</span>
-                      <span style={{ fontSize: 13, color: "#555" }}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {plan.current ? (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: 13,
-                      fontWeight: 400,
-                      color: "#aaa",
-                      padding: "10px",
-                      border: "1px solid #F0F0F0",
-                      borderRadius: 8,
-                    }}
-                  >
-                    Current plan
-                  </div>
-                ) : plan.priceMonthly === null ? (
-                  <Button href="mailto:hi@athena.app" variant="primary-dark" style={{ width: "100%" }}>
-                    Contact sales
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={() => setModal(plan)}
-                    variant="primary-dark"
-                    style={{ width: "100%" }}
-                  >
-                    Upgrade to {plan.name}
-                  </Button>
-                )}
-              </div>
+            {TIERS.filter((t) => t.id === activeTab).map((tier) => (
+              <TierCard key={tier.id} tier={tier} />
             ))}
           </div>
 
-          {/* Billing history */}
-          <h2 style={{ fontSize: 16, fontWeight: 400, letterSpacing: "-0.02em", color: "#111", marginBottom: 20, textWrap: "balance" } as React.CSSProperties}>
+          <div className="billing-plans-grid">
+            {TIERS.map((tier) => (
+              <TierCard key={tier.id} tier={tier} />
+            ))}
+          </div>
+
+          <h2
+            style={
+              {
+                fontSize: 16,
+                fontWeight: 400,
+                letterSpacing: "-0.02em",
+                color: "#111",
+                marginBottom: 20,
+                textWrap: "balance",
+              } as React.CSSProperties
+            }
+          >
             Billing history
           </h2>
           <div
@@ -542,15 +678,14 @@ export default function BillingClient({ used }: { used: Usage }) {
           >
             <div style={{ padding: "32px 24px", textAlign: "center" }}>
               <p style={{ fontSize: 13.5, color: "#999", margin: 0 }}>
-                No billing history yet. You&apos;re on the free Starter plan — invoices will appear here once you upgrade.
+                {isPaid && entitlement.source === "paddle"
+                  ? "Invoices are available in the Paddle customer portal after each successful charge."
+                  : "No billing history yet. Subscribe above to start — invoices appear after each charge."}
               </p>
             </div>
           </div>
-
         </PageFadeIn>
       </main>
-
-      {modal && <UpgradeModal plan={modal} onClose={() => setModal(null)} />}
     </DashboardShell>
   );
 }

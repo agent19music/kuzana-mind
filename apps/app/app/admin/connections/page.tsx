@@ -6,7 +6,13 @@ import ConnectionsClient from "./ConnectionsClient";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-type OrgStats = { chunk_count: number; last_synced: string | null; source_types: string[] };
+type OrgStats = {
+  chunk_count: number;
+  last_synced: string | null;
+  source_types: string[];
+  plan?: string;
+  limits?: { drive?: boolean; source_types?: number | null };
+};
 type Job = {
   id: string;
   status: string;

@@ -35,7 +35,15 @@ export default function FileUploadCard() {
       const res = await fetch("/api/upload", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) {
-        setErrorMsg(data.error ?? "Upload failed");
+        const detail = data?.detail;
+        setErrorMsg(
+          (typeof detail === "object" && detail?.message) ||
+            (typeof detail === "string" && detail) ||
+            data.error ||
+            (res.status === 402
+              ? "Plan limit reached. Upgrade on Billing."
+              : "Upload failed")
+        );
         setState("error");
       } else {
         setResult(data);

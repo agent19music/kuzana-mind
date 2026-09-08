@@ -295,7 +295,15 @@ export default function FilesPage() {
     const data = await res.json().catch(() => null);
 
     if (!res.ok) {
-      updateItem(item.id, { status: "chunk_failed", reason: data?.error ?? "Processing failed" });
+      const detail = data?.detail;
+      const reason =
+        (typeof detail === "object" && detail?.message) ||
+        (typeof detail === "string" && detail) ||
+        data?.error ||
+        (res.status === 402
+          ? "Plan limit reached. Upgrade on Billing."
+          : "Processing failed");
+      updateItem(item.id, { status: "chunk_failed", reason });
       return;
     }
 

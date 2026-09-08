@@ -38,7 +38,13 @@ async function waitForJob(jobId: string): Promise<JobOutcome> {
   return { status: "timeout" };
 }
 
-type OrgStats = { chunk_count: number; last_synced: string | null; source_types: string[] };
+type OrgStats = {
+  chunk_count: number;
+  last_synced: string | null;
+  source_types: string[];
+  plan?: string;
+  limits?: { drive?: boolean; source_types?: number | null };
+};
 type Job = {
   id: string;
   status: string;
@@ -262,12 +268,15 @@ function ConnectorModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error((await res.text()) || "Could not save");
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || "Could not save");
+      }
 
       // Credentials are saved at this point, but indexing runs in the
       // background. Hold the modal open until the run settles so the user sees
       // the outcome here instead of closing onto a stale "Not connected" row.
-      const { job_id: jobId } = await res.json();
+      const jobId = payload.job_id;
       if (jobId) {
         setState("syncing");
         const outcome = await waitForJob(jobId);
@@ -504,6 +513,7 @@ export default function ConnectionsClient({
 }) {
   const router = useRouter();
   const [configuring, setConfiguring] = useState<string | null>(null);
+  const driveAllowed = stats?.limits?.drive === true || stats?.plan === "pro" || stats?.plan === "plus" || stats?.plan === "advanced";
 
   const lastSynced = stats?.last_synced ?? null;
   const latestJob = jobs[0] ?? null;
@@ -567,15 +577,24 @@ export default function ConnectionsClient({
     {
       id: "drive",
       name: "Google Drive",
-      description: "Full Drive folder sync via service account connector.",
-      status: stateFor("drive").status,
+      description: driveAllowed
+        ? "Full Drive folder sync via service account connector."
+        : "Pro and Plus — full Drive folder sync via service account connector.",
+      status: driveAllowed ? stateFor("drive").status : "disconnected",
       // Drive's chunks are tagged "google_docs" by its loader, so indexed
       // volume isn't attributable to it — hence no chunk count here.
-      meta: stateFor("drive").configured
-        ? "Folder configured · shares indexed volume with Google Docs"
-        : "Not set up · share a folder with the service account, then add its id",
-      actionLabel: stateFor("drive").configured ? "Change folder" : "Set up",
-      syncable: stateFor("drive").configured,
+      meta: !driveAllowed
+        ? "Upgrade on Billing to unlock Google Drive"
+        : stateFor("drive").configured
+          ? "Folder configured · shares indexed volume with Google Docs"
+          : "Not set up · share a folder with the service account, then add its id",
+      actionLabel: !driveAllowed
+        ? "Upgrade"
+        : stateFor("drive").configured
+          ? "Change folder"
+          : "Set up",
+      actionHref: !driveAllowed ? "/admin/billing" : undefined,
+      syncable: driveAllowed && stateFor("drive").configured,
       logo: <Image src="/icons/google-drive.svg" alt="Google Drive" width={22} height={22} />,
     },
     {
@@ -746,6 +765,10 @@ export default function ConnectionsClient({
                         integration={conn.id}
                         initiallyNotified={notifiedIntegrations.includes(conn.id)}
                       />
+                    ) : conn.actionHref ? (
+                      <Button href={conn.actionHref} variant="secondary" size="sm">
+                        {conn.actionLabel}
+                      </Button>
                     ) : CONNECTOR_FIELDS[conn.id] ? (
                       <ConfigureButton
                         label={conn.actionLabel}

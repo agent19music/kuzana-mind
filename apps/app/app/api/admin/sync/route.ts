@@ -79,7 +79,22 @@ export async function POST(request: NextRequest) {
 
     if (!res.ok) {
       const text = await res.text();
-      return NextResponse.json({ error: text }, { status: res.status });
+      let message = text;
+      try {
+        const parsed = JSON.parse(text);
+        const detail = parsed.detail;
+        message =
+          (typeof detail === "object" && detail?.message) ||
+          (typeof detail === "string" && detail) ||
+          parsed.error ||
+          text;
+      } catch {
+        /* keep raw text */
+      }
+      return NextResponse.json(
+        { error: message },
+        { status: res.status }
+      );
     }
 
     const data = await res.json();
