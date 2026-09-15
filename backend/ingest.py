@@ -831,6 +831,9 @@ async def run_ingestion(
     drive_folder_id: str | None = None,
     tally_api_key: str | None = None,
     tally_form_ids: list[str] | None = None,
+    tally_oauth_refresh_token: str | None = None,
+    tally_oauth_expires_in: int | None = None,
+    tally_oauth_scope: str | None = None,
     trigger: str = "manual",
     job_id: str | None = None,
 ) -> dict:
@@ -863,6 +866,15 @@ async def run_ingestion(
                 org.tally_api_key = tally_api_key
             if tally_form_ids is not None:
                 org.tally_form_ids = tally_form_ids
+            if tally_oauth_refresh_token:
+                org.tally_oauth_refresh_token = tally_oauth_refresh_token
+            if tally_oauth_scope:
+                org.tally_oauth_scope = tally_oauth_scope
+            if tally_oauth_expires_in and tally_oauth_expires_in > 0:
+                from datetime import datetime, timedelta, timezone
+                org.tally_oauth_expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=int(tally_oauth_expires_in)
+                )
         else:
             org = Organization(
                 clerk_org_id=org_id,
@@ -884,6 +896,17 @@ async def run_ingestion(
         eff_drive_folder = drive_folder_id or org.drive_folder_id
         eff_tally_key = tally_api_key or org.tally_api_key
         eff_tally_forms = tally_form_ids if tally_form_ids is not None else org.tally_form_ids
+
+        # Refresh OAuth access token when we have a refresh token on the org.
+        if org and getattr(org, "tally_oauth_refresh_token", None):
+            try:
+                import tally_oauth
+                fresh = tally_oauth.ensure_fresh_tally_token(org)
+                session.commit()
+                if fresh:
+                    eff_tally_key = fresh
+            except Exception as e:
+                print(f"Tally OAuth refresh skipped/failed: {e}")
 
     # Open a job row so status is observable while the run is in flight. The
     # caller may have already created one (see create_ingest_job) so it could

@@ -28,6 +28,10 @@ export type ConnectorState = {
   status: "connected" | "partial" | "disconnected" | "syncing" | "error";
   chunk_count: number;
   last_synced: string | null;
+  has_forms?: boolean;
+  has_root?: boolean;
+  oauth?: boolean;
+  workspace_name?: string;
 };
 
 export default async function ConnectionsPage() {

@@ -42,12 +42,18 @@ class Organization(Base):
     clerk_org_id   = Column(String, unique=True, nullable=False, index=True)
     name           = Column(String, nullable=False)
     logo_url       = Column(String)
-    notion_api_key       = Column(String)
+    notion_api_key       = Column(String)                # internal token or OAuth access token
     notion_root_page_id  = Column(String)
+    notion_workspace_id  = Column(String)
+    notion_workspace_name = Column(String)
+    notion_oauth         = Column(Boolean, default=False)  # True when connected via OAuth
     public_doc_ids       = Column(JSONB, default=list)
     drive_folder_id      = Column(String)                # per-org service-account Drive folder
-    tally_api_key        = Column(String)                # personal access token, tally.so/help/api
+    tally_api_key        = Column(String)                # PAT or OAuth access token (Bearer)
     tally_form_ids       = Column(JSONB, default=list)   # forms to pull submissions from
+    tally_oauth_refresh_token = Column(String)           # Tally OAuth refresh token (optional)
+    tally_oauth_expires_at    = Column(DateTime(timezone=True))
+    tally_oauth_scope         = Column(String)
     avax_audit_enabled   = Column(Boolean, default=False)
     created_at     = Column(DateTime(timezone=True), server_default=func.now())
 

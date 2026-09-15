@@ -64,6 +64,9 @@ type Connection = {
   meta: string;
   actionLabel: string;
   actionHref?: string;
+  /** Primary OAuth connect for Tally (no pasted API key). */
+  oauthHref?: string;
+  oauthLabel?: string;
   syncable: boolean;
   logo: React.ReactNode;
 };
@@ -179,40 +182,44 @@ type Field = {
 const CONNECTOR_FIELDS: Record<string, { title: string; blurb: string; docs: string; fields: Field[] }> = {
   notion: {
     title: "Configure Notion",
-    blurb: "Athena crawls the child pages under your root page and indexes them as knowledge.",
-    docs: "https://www.notion.so/profile/integrations",
+    blurb:
+      "Prefer Connect Notion (OAuth) on the row — share pages during Notion consent, no token paste. Advanced: paste an internal integration token and root page id.",
+    docs: "https://developers.notion.com/docs/authorization",
     fields: [
       {
         key: "notion_api_key",
-        label: "Internal integration token",
-        hint: "Starts with ntn_. Create one under Notion → Settings → Connections, then share your root page with it.",
+        label: "Integration token (advanced)",
+        hint: "Only if you are not using Connect Notion. Starts with secret_ or ntn_.",
         placeholder: "ntn_…",
         secret: true,
+        optional: true,
       },
       {
         key: "notion_root_page_id",
         label: "Root page id",
-        hint: "The 32-character id in the page URL. Everything nested under it gets indexed.",
+        hint: "Page shared with Athena. After OAuth you can pick from the dropdown below when available.",
         placeholder: "1a2b3c4d…",
       },
     ],
   },
   tally: {
     title: "Configure Tally",
-    blurb: "Each form submission is indexed as its own document, so staff can ask what feedback came in.",
-    docs: "https://tally.so/help/api",
+    blurb:
+      "Prefer Connect Tally (OAuth) on the row — no API key paste. Advanced: paste a personal access token and form ids. Each submission is indexed as its own document.",
+    docs: "https://developers.tally.so/api-reference/mcp",
     fields: [
       {
         key: "tally_api_key",
-        label: "API key",
-        hint: "A Tally personal access token, from your Tally account settings.",
+        label: "API key (advanced)",
+        hint: "Only if you are not using Connect Tally. Personal access token from Tally settings.",
         placeholder: "tly_…",
         secret: true,
+        optional: true,
       },
       {
         key: "tally_form_ids",
         label: "Form ids",
-        hint: "Comma separated. Find each id in the form's URL.",
+        hint: "Comma separated. After OAuth, Athena tries to detect forms automatically; override here if needed.",
         placeholder: "wA2xR9, mBv7Kd",
         list: true,
       },
@@ -247,9 +254,38 @@ function ConnectorModal({
   const [values, setValues] = useState<Record<string, string>>({});
   const [state, setState] = useState<"idle" | "saving" | "syncing" | "error">("idle");
   const [error, setError] = useState("");
+  const [notionPages, setNotionPages] = useState<Array<{ id: string; title: string }>>([]);
+
+  useEffect(() => {
+    if (connectorId !== "notion") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/notion/pages", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.pages)) {
+          setNotionPages(
+            data.pages.map((p: { id: string; title: string }) => ({
+              id: p.id,
+              title: p.title || p.id,
+            })),
+          );
+        }
+      } catch {
+        /* optional enhancement */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connectorId]);
 
   const busy = state === "saving" || state === "syncing";
-  const ready = spec.fields.every((f) => f.optional || (values[f.key] ?? "").trim());
+  const ready =
+    connectorId === "notion"
+      ? Boolean((values.notion_root_page_id ?? "").trim())
+      : spec.fields.every((f) => f.optional || (values[f.key] ?? "").trim());
 
   async function save() {
     setState("saving");
@@ -263,6 +299,38 @@ function ConnectorModal({
     }
 
     try {
+      // OAuth-connected Notion with only a root page selected → dedicated endpoint.
+      if (
+        connectorId === "notion" &&
+        typeof body.notion_root_page_id === "string" &&
+        !body.notion_api_key
+      ) {
+        const res = await fetch("/api/admin/notion/root", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            root_page_id: body.notion_root_page_id,
+            trigger_ingest: true,
+          }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || payload.detail || "Could not save root page");
+        const jobId = payload.job_id;
+        if (jobId) {
+          setState("syncing");
+          const outcome = await waitForJob(jobId);
+          if (outcome.status === "failed") {
+            setError(outcome.error || "The sync failed.");
+            setState("error");
+            router.refresh();
+            return;
+          }
+        }
+        router.refresh();
+        onClose();
+        return;
+      }
+
       const res = await fetch("/api/admin/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -378,6 +446,35 @@ function ConnectorModal({
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {connectorId === "notion" && notionPages.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label htmlFor="notion_page_picker" style={{ fontSize: 13, color: "#444" }}>
+                  Pages shared with Athena
+                </label>
+                <select
+                  id="notion_page_picker"
+                  value={values.notion_root_page_id ?? ""}
+                  onChange={(e) =>
+                    setValues((v) => ({ ...v, notion_root_page_id: e.target.value }))
+                  }
+                  style={{
+                    fontSize: 13.5,
+                    color: "#111",
+                    background: "#fff",
+                    border: "1px solid #E2E2E2",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <option value="">Select a root page…</option>
+                  {notionPages.map((page) => (
+                    <option key={page.id} value={page.id}>
+                      {page.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {spec.fields.map((f) => (
               <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <label htmlFor={f.key} style={{ fontSize: 13, color: "#444" }}>
@@ -513,7 +610,41 @@ export default function ConnectionsClient({
 }) {
   const router = useRouter();
   const [configuring, setConfiguring] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
   const driveAllowed = stats?.limits?.drive === true || stats?.plan === "pro" || stats?.plan === "plus" || stats?.plan === "advanced";
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tally = params.get("tally");
+    const notion = params.get("notion");
+    if (tally === "connected") {
+      const n = params.get("forms");
+      setBanner(
+        n
+          ? `Tally connected. Syncing ${n} form${n === "1" ? "" : "s"}.`
+          : "Tally connected.",
+      );
+    } else if (tally === "pick_forms" || tally === "no_forms") {
+      setBanner("Tally authorized. Add form ids under Advanced to start indexing.");
+      setConfiguring("tally");
+    } else if (tally === "error") {
+      setBanner(`Tally connect failed (${params.get("reason") || "unknown"}). Try again.`);
+    }
+
+    if (notion === "connected") {
+      const ws = params.get("workspace");
+      setBanner(ws ? `Notion connected (${ws}). Syncing…` : "Notion connected. Syncing…");
+    } else if (notion === "pick_root" || notion === "no_pages") {
+      setBanner(
+        notion === "no_pages"
+          ? "Notion authorized, but no pages were shared. Share pages with Athena in Notion, then pick a root."
+          : "Notion authorized. Pick a root page to start indexing.",
+      );
+      setConfiguring("notion");
+    } else if (notion === "error") {
+      setBanner(`Notion connect failed (${params.get("reason") || "unknown"}). Try again.`);
+    }
+  }, []);
 
   const lastSynced = stats?.last_synced ?? null;
   const latestJob = jobs[0] ?? null;
@@ -523,7 +654,7 @@ export default function ConnectionsClient({
   // used to) can't tell "never set up" apart from "set up but nothing indexed",
   // so an unconfigured connector was reported as partially connected.
   const stateFor = (id: string): ConnectorState =>
-    connectors[id] ?? { configured: false, status: "disconnected", chunk_count: 0, last_synced: null };
+    connectors[id] ?? { configured: false, status: "disconnected", chunk_count: 0, last_synced: null, has_forms: false, has_root: false, oauth: false };
 
   // Row subtitle, driven by the connector's real state rather than a single
   // "has data / has no data" fork.
@@ -549,9 +680,28 @@ export default function ConnectionsClient({
       name: "Notion",
       description: "Sync pages and databases from your Notion workspace.",
       status: stateFor("notion").status,
-      meta: metaFor("notion", "Not set up · needs an integration token and root page"),
-      actionLabel: stateFor("notion").configured ? "Reconfigure" : "Configure",
-      syncable: stateFor("notion").configured,
+      meta: metaFor(
+        "notion",
+        stateFor("notion").oauth && !stateFor("notion").has_root
+          ? "Notion authorized · pick a root page to finish setup"
+          : stateFor("notion").workspace_name
+            ? `Workspace · ${stateFor("notion").workspace_name}`
+            : "Not set up · Connect with Notion (no token paste)",
+      ),
+      actionLabel:
+        stateFor("notion").oauth && !stateFor("notion").has_root
+          ? "Pick root page"
+          : stateFor("notion").configured
+            ? "Advanced"
+            : "Advanced setup",
+      oauthHref: "/api/auth/notion",
+      oauthLabel:
+        stateFor("notion").oauth || stateFor("notion").configured
+          ? "Reconnect Notion"
+          : "Connect Notion",
+      syncable: Boolean(
+        stateFor("notion").configured && (stateFor("notion").has_root ?? true),
+      ),
       logo: <NotionLogo />,
     },
     {
@@ -569,9 +719,25 @@ export default function ConnectionsClient({
       name: "Tally",
       description: "Pull form and survey responses so staff can ask about the feedback they've received.",
       status: stateFor("tally").status,
-      meta: metaFor("tally", "Not set up · needs an API key and form ids"),
-      actionLabel: stateFor("tally").configured ? "Reconfigure" : "Configure",
-      syncable: stateFor("tally").configured,
+      meta: metaFor(
+        "tally",
+        stateFor("tally").oauth
+          ? "Tally authorized · add form ids to finish setup"
+          : "Not set up · Connect with Tally (no API key paste)",
+      ),
+      actionLabel: stateFor("tally").oauth && !stateFor("tally").has_forms
+        ? "Add form ids"
+        : stateFor("tally").configured
+          ? "Advanced"
+          : "Advanced setup",
+      oauthHref: "/api/auth/tally",
+      oauthLabel:
+        stateFor("tally").oauth || stateFor("tally").configured
+          ? "Reconnect Tally"
+          : "Connect Tally",
+      syncable: Boolean(
+        stateFor("tally").configured && (stateFor("tally").has_forms ?? true),
+      ),
       logo: <Image src="/icons/tally.svg" alt="Tally" width={22} height={22} />,
     },
     {
@@ -679,7 +845,17 @@ export default function ConnectionsClient({
         </div>
       )}
 
-      <div
+            {banner && (
+        <p
+          className="notice notice-info"
+          style={{ margin: "0 0 16px" }}
+          role="status"
+        >
+          {banner}
+        </p>
+      )}
+
+<div
         style={{
           background: "#fff",
           border: "1px solid #E8E8E8",
@@ -765,21 +941,30 @@ export default function ConnectionsClient({
                         integration={conn.id}
                         initiallyNotified={notifiedIntegrations.includes(conn.id)}
                       />
-                    ) : conn.actionHref ? (
-                      <Button href={conn.actionHref} variant="secondary" size="sm">
-                        {conn.actionLabel}
-                      </Button>
-                    ) : CONNECTOR_FIELDS[conn.id] ? (
-                      <ConfigureButton
-                        label={conn.actionLabel}
-                        destructive={conn.syncable}
-                        tooltip={conn.syncable ? "Replaces the current setup and re-indexes" : undefined}
-                        onClick={() => setConfiguring(conn.id)}
-                      />
                     ) : (
-                      <Button href={conn.actionHref ?? "#"} variant="secondary" size="sm">
-                        {conn.actionLabel}
-                      </Button>
+                      <>
+                        {conn.oauthHref && (
+                          <Button href={conn.oauthHref} variant="accent-solid" size="sm">
+                            {conn.oauthLabel ?? "Connect"}
+                          </Button>
+                        )}
+                        {conn.actionHref ? (
+                          <Button href={conn.actionHref} variant="secondary" size="sm">
+                            {conn.actionLabel}
+                          </Button>
+                        ) : CONNECTOR_FIELDS[conn.id] ? (
+                          <ConfigureButton
+                            label={conn.actionLabel}
+                            destructive={conn.syncable}
+                            tooltip={
+                              conn.syncable
+                                ? "Replaces the current setup and re-indexes"
+                                : undefined
+                            }
+                            onClick={() => setConfiguring(conn.id)}
+                          />
+                        ) : null}
+                      </>
                     )}
                   </>
                 )}

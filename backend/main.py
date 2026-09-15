@@ -606,6 +606,9 @@ class IngestRequest(BaseModel):
     drive_folder_id: str | None = None
     tally_api_key: str | None = None
     tally_form_ids: list[str] | None = None
+    tally_oauth_refresh_token: str | None = None
+    tally_oauth_expires_in: int | None = None
+    tally_oauth_scope: str | None = None
     trigger: str = "manual"
 
 
@@ -679,6 +682,9 @@ async def ingest(
         drive_folder_id=req.drive_folder_id,
         tally_api_key=req.tally_api_key,
         tally_form_ids=req.tally_form_ids,
+        tally_oauth_refresh_token=req.tally_oauth_refresh_token,
+        tally_oauth_expires_in=req.tally_oauth_expires_in,
+        tally_oauth_scope=req.tally_oauth_scope,
         trigger=req.trigger,
         job_id=job_id,
     )
@@ -780,9 +786,9 @@ async def connections(auth_ctx: AuthContext = Depends(require_read_auth)):
         org = db.query(Organization).filter_by(clerk_org_id=org_id).first()
 
         configured = {
-            "notion": bool(org and org.notion_api_key and org.notion_root_page_id),
+            "notion": bool(org and org.notion_api_key),
             "google_docs": bool(org and org.public_doc_ids),
-            "tally": bool(org and org.tally_api_key and org.tally_form_ids),
+            "tally": bool(org and org.tally_api_key),
             "drive": bool(org and org.drive_folder_id),
         }
 
@@ -832,12 +838,22 @@ async def connections(auth_ctx: AuthContext = Depends(require_read_auth)):
             # form, or revoked access. This is the one honest use of "partial".
             status = "partial"
 
-        connectors[key] = {
+        entry = {
             "configured": is_configured,
             "status": status,
             "chunk_count": chunk_count,
             "last_synced": row.last_synced.isoformat() if row and row.last_synced else None,
         }
+        if key == "tally":
+            forms = (org.tally_form_ids if org else None) or []
+            entry["has_forms"] = bool(isinstance(forms, list) and any(forms))
+            entry["oauth"] = bool(org and getattr(org, "tally_oauth_refresh_token", None))
+        if key == "notion":
+            entry["has_root"] = bool(org and org.notion_root_page_id)
+            entry["oauth"] = bool(org and getattr(org, "notion_oauth", False))
+            if org and org.notion_workspace_name:
+                entry["workspace_name"] = org.notion_workspace_name
+        connectors[key] = entry
 
     return {
         "connectors": connectors,
@@ -848,6 +864,261 @@ async def connections(auth_ctx: AuthContext = Depends(require_read_auth)):
             "chunks": latest.chunks,
         } if latest else None,
     }
+
+
+
+
+# ---------------------------------------------------------------------------
+# Tally OAuth (Connect without pasted API keys)
+# ---------------------------------------------------------------------------
+
+class TallyOAuthSaveRequest(BaseModel):
+    access_token: str
+    refresh_token: str | None = None
+    expires_in: int | None = None
+    scope: str | None = None
+    form_ids: list[str] | None = None
+    trigger_ingest: bool = True
+
+
+@app.post("/connections/tally/oauth")
+async def save_tally_oauth(
+    body: TallyOAuthSaveRequest,
+    background_tasks: BackgroundTasks,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Persist Tally OAuth tokens for the caller's org and optionally ingest."""
+    from datetime import datetime, timedelta, timezone
+
+    from database import Organization, get_session
+    from ingest import create_ingest_job, run_ingestion
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    access = (body.access_token or "").strip()
+    if not access:
+        raise HTTPException(status_code=400, detail="access_token required")
+
+    form_ids = [f.strip() for f in (body.form_ids or []) if isinstance(f, str) and f.strip()]
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org:
+            org = Organization(
+                clerk_org_id=auth_ctx.clerk_org_id,
+                name="Unnamed Organisation",
+            )
+            db.add(org)
+        org.tally_api_key = access
+        if body.refresh_token:
+            org.tally_oauth_refresh_token = body.refresh_token.strip()
+        if body.scope:
+            org.tally_oauth_scope = body.scope.strip()
+        if body.expires_in and body.expires_in > 0:
+            org.tally_oauth_expires_at = datetime.now(timezone.utc) + timedelta(
+                seconds=int(body.expires_in)
+            )
+        if form_ids:
+            org.tally_form_ids = form_ids
+        db.commit()
+
+    job_id = None
+    if body.trigger_ingest and form_ids:
+        job_id = create_ingest_job(auth_ctx.clerk_org_id, "tally_oauth")
+        background_tasks.add_task(
+            run_ingestion,
+            org_id=auth_ctx.clerk_org_id,
+            tally_api_key=access,
+            tally_form_ids=form_ids,
+            tally_oauth_refresh_token=body.refresh_token,
+            tally_oauth_expires_in=body.expires_in,
+            tally_oauth_scope=body.scope,
+            trigger="tally_oauth",
+            job_id=job_id,
+        )
+
+    return {
+        "ok": True,
+        "has_forms": bool(form_ids),
+        "form_count": len(form_ids),
+        "job_id": str(job_id) if job_id else None,
+    }
+
+
+@app.get("/connections/tally/forms")
+async def list_tally_forms(auth_ctx: AuthContext = Depends(require_auth)):
+    """List Tally forms for the org using the stored OAuth/PAT token."""
+    from database import Organization, get_session
+    import tally_oauth
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org or not org.tally_api_key:
+            raise HTTPException(status_code=400, detail="Tally is not connected")
+        try:
+            token = tally_oauth.ensure_fresh_tally_token(org)
+            db.commit()
+        except tally_oauth.TallyOAuthError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    try:
+        forms = tally_oauth.list_forms(token or org.tally_api_key)
+    except tally_oauth.TallyOAuthError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    slim = []
+    for f in forms:
+        if not isinstance(f, dict):
+            continue
+        fid = f.get("id") or f.get("formId")
+        if not fid:
+            continue
+        slim.append(
+            {
+                "id": fid,
+                "name": f.get("name") or f.get("title") or fid,
+                "status": f.get("status"),
+            }
+        )
+    return {"forms": slim}
+
+
+
+
+# ---------------------------------------------------------------------------
+# Notion OAuth (Connect without pasted integration token)
+# ---------------------------------------------------------------------------
+
+class NotionOAuthSaveRequest(BaseModel):
+    access_token: str
+    workspace_id: str | None = None
+    workspace_name: str | None = None
+    root_page_id: str | None = None
+    trigger_ingest: bool = True
+
+
+@app.post("/connections/notion/oauth")
+async def save_notion_oauth(
+    body: NotionOAuthSaveRequest,
+    background_tasks: BackgroundTasks,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Persist Notion OAuth token for the caller's org and optionally ingest."""
+    from database import Organization, get_session
+    from ingest import create_ingest_job, run_ingestion
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    access = (body.access_token or "").strip()
+    if not access:
+        raise HTTPException(status_code=400, detail="access_token required")
+
+    root = (body.root_page_id or "").strip() or None
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org:
+            org = Organization(
+                clerk_org_id=auth_ctx.clerk_org_id,
+                name="Unnamed Organisation",
+            )
+            db.add(org)
+        org.notion_api_key = access
+        org.notion_oauth = True
+        if body.workspace_id:
+            org.notion_workspace_id = body.workspace_id.strip()
+        if body.workspace_name:
+            org.notion_workspace_name = body.workspace_name.strip()
+        if root:
+            org.notion_root_page_id = root
+        db.commit()
+
+    job_id = None
+    if body.trigger_ingest and root:
+        job_id = create_ingest_job(auth_ctx.clerk_org_id, "notion_oauth")
+        background_tasks.add_task(
+            run_ingestion,
+            org_id=auth_ctx.clerk_org_id,
+            notion_api_key=access,
+            notion_root_page_id=root,
+            trigger="notion_oauth",
+            job_id=job_id,
+        )
+
+    return {
+        "ok": True,
+        "has_root": bool(root),
+        "job_id": str(job_id) if job_id else None,
+    }
+
+
+@app.get("/connections/notion/pages")
+async def list_notion_pages(auth_ctx: AuthContext = Depends(require_auth)):
+    """List Notion pages visible to the org's stored OAuth/integration token."""
+    from database import Organization, get_session
+    import notion_oauth
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org or not org.notion_api_key:
+            raise HTTPException(status_code=400, detail="Notion is not connected")
+        token = org.notion_api_key
+
+    try:
+        pages = notion_oauth.search_pages(token)
+    except notion_oauth.NotionOAuthError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    return {"pages": pages}
+
+
+@app.post("/connections/notion/root")
+async def set_notion_root(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Set the Notion root page id after OAuth and optionally ingest."""
+    from database import Organization, get_session
+    from ingest import create_ingest_job, run_ingestion
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    root = (body.get("root_page_id") or "").strip()
+    if not root:
+        raise HTTPException(status_code=400, detail="root_page_id required")
+    trigger_ingest = body.get("trigger_ingest", True)
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org or not org.notion_api_key:
+            raise HTTPException(status_code=400, detail="Notion is not connected")
+        org.notion_root_page_id = root
+        token = org.notion_api_key
+        db.commit()
+
+    job_id = None
+    if trigger_ingest:
+        job_id = create_ingest_job(auth_ctx.clerk_org_id, "notion_root")
+        background_tasks.add_task(
+            run_ingestion,
+            org_id=auth_ctx.clerk_org_id,
+            notion_api_key=token,
+            notion_root_page_id=root,
+            trigger="notion_root",
+            job_id=job_id,
+        )
+
+    return {"ok": True, "root_page_id": root, "job_id": str(job_id) if job_id else None}
 
 
 # ---------------------------------------------------------------------------
