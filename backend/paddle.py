@@ -66,16 +66,28 @@ def catalog_price_ids() -> dict[str, str]:
     return mapping
 
 
-def price_id_for_plan(plan: str) -> str:
-    """Monthly price id for seat-sync / legacy transaction checkout."""
+_DEFAULT_PRICE_IDS: dict[tuple[str, str], str] = {
+    ("starter", "month"): "pri_01m215b0ecq2b4ax936hxkg1zp",
+    ("starter", "year"): "pri_01m215b1hh683530gdj8xcc8c1",
+    ("pro", "month"): "pri_01m215b3khx25g48jem5rbk8tb",
+    ("pro", "year"): "pri_01m215b4y93q0h63peaj2w7ga6",
+    ("advanced", "month"): "pri_01m215b757n462c86r7tev62vq",
+    ("advanced", "year"): "pri_01m215b83z0avwsv0va5tdxteq",
+}
+
+
+def price_id_for_plan(plan: str, interval: str = "month") -> str:
+    """Catalog price id for a plan + billing interval."""
     normalized = "advanced" if plan in ("plus", "advanced") else plan
-    if normalized == "advanced":
-        pid = PADDLE_PRICE_ID_ADVANCED or "pri_01m215b757n462c86r7tev62vq"
-        return pid
-    if normalized == "starter":
-        return "pri_01m215b0ecq2b4ax936hxkg1zp"
-    # pro
-    return PADDLE_PRICE_ID_PRO or "pri_01m215b3khx25g48jem5rbk8tb"
+    if normalized not in ("starter", "pro", "advanced"):
+        normalized = "pro"
+    iv = "year" if interval == "year" else "month"
+    if iv == "month":
+        if normalized == "advanced" and PADDLE_PRICE_ID_ADVANCED:
+            return PADDLE_PRICE_ID_ADVANCED
+        if normalized == "pro" and PADDLE_PRICE_ID_PRO:
+            return PADDLE_PRICE_ID_PRO
+    return _DEFAULT_PRICE_IDS[(normalized, iv)]
 
 
 def configured() -> bool:
@@ -113,15 +125,22 @@ def create_checkout_transaction(
     quantity: int,
     clerk_org_id: str,
     plan: str = "pro",
+    interval: str = "month",
     customer_email: str | None = None,
     paddle_customer_id: str | None = None,
 ) -> dict:
     """Create a draft/ready transaction for Paddle.js overlay checkout."""
-    price_id = price_id_for_plan(plan)
+    iv = "year" if interval == "year" else "month"
+    price_id = price_id_for_plan(plan, iv)
     qty = max(1, int(quantity))
     payload: dict[str, Any] = {
         "items": [{"price_id": price_id, "quantity": qty}],
-        "custom_data": {"clerk_org_id": clerk_org_id, "plan": plan},
+        "custom_data": {
+            "clerk_org_id": clerk_org_id,
+            "plan": plan,
+            "interval": iv,
+            "locked_quantity": qty,
+        },
         "collection_mode": "automatic",
     }
     if paddle_customer_id:
@@ -130,6 +149,53 @@ def create_checkout_transaction(
         payload["customer"] = {"email": customer_email}
 
     result = _request("POST", "/transactions", payload)
+    return result.get("data") or result
+
+
+def get_transaction(transaction_id: str) -> dict:
+    result = _request("GET", f"/transactions/{transaction_id}")
+    return result.get("data") or result
+
+
+def lock_checkout_transaction(transaction_id: str, *, clerk_org_id: str) -> dict:
+    """Restore locked seat quantity and bill once the transaction is ready.
+
+    Overlay checkout lets customers edit quantity. Billing a ready transaction
+    turns it into a financial record that Paddle will not let them change.
+    """
+    txn = get_transaction(transaction_id)
+    custom = txn.get("custom_data") or {}
+    if custom.get("clerk_org_id") != clerk_org_id:
+        raise PaddleError("Transaction does not belong to this organisation", status=403)
+
+    status = txn.get("status")
+    if status in ("billed", "paid", "completed", "canceled"):
+        return txn
+
+    locked = custom.get("locked_quantity")
+    try:
+        qty = max(1, int(locked)) if locked is not None else None
+    except (TypeError, ValueError):
+        qty = None
+
+    items = txn.get("items") or []
+    price_id = None
+    current_qty = None
+    if items:
+        first = items[0]
+        current_qty = first.get("quantity")
+        price = first.get("price") or {}
+        price_id = first.get("price_id") or price.get("id")
+
+    patch: dict[str, Any] = {}
+    if qty is not None and price_id and current_qty != qty:
+        patch["items"] = [{"price_id": price_id, "quantity": qty}]
+    if status == "ready":
+        patch["status"] = "billed"
+    if not patch:
+        return txn
+
+    result = _request("PATCH", f"/transactions/{transaction_id}", patch)
     return result.get("data") or result
 
 

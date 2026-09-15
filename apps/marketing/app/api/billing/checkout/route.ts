@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
   let quantity = 1;
   try {
     const client = await clerkClient();
+    // totalCount is preferred; list is capped at 100 memberships.
     const memberships = await client.organizations.getOrganizationMembershipList({
       organizationId: orgId,
       limit: 100,

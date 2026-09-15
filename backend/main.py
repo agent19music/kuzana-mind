@@ -1076,6 +1076,12 @@ async def billing_entitlement(auth_ctx: AuthContext = Depends(require_read_auth)
 
 class CheckoutRequest(BaseModel):
     plan: str = "pro"
+    interval: str = "month"
+    quantity: int | None = None
+
+
+class LockCheckoutRequest(BaseModel):
+    transaction_id: str
 
 
 @app.post("/billing/checkout")
@@ -1085,7 +1091,7 @@ async def billing_checkout(
 ):
     """Create a Paddle transaction for overlay checkout (org admin)."""
     import paddle as paddle_api
-    from billing import count_members, resolve_entitlement
+    from billing import PLANS, count_members, resolve_entitlement
     from database import get_session
 
     req = body or CheckoutRequest()
@@ -1094,6 +1100,7 @@ async def billing_checkout(
         plan = "advanced"
     if plan not in ("starter", "pro", "advanced"):
         raise HTTPException(status_code=400, detail="Plan must be starter, pro, or advanced.")
+    interval = "year" if (req.interval or "month") == "year" else "month"
 
     if not auth_ctx.is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
@@ -1114,14 +1121,21 @@ async def billing_checkout(
             and ent.plan == plan
         ):
             raise HTTPException(status_code=400, detail=f"Already subscribed to {ent.limits.name}.")
-        seats = max(1, count_members(db, auth_ctx.clerk_org_id) or 1)
+        db_seats = max(1, count_members(db, auth_ctx.clerk_org_id) or 1)
         customer_id = ent.paddle_customer_id
+
+    clerk_seats = max(1, int(req.quantity)) if req.quantity else None
+    # Clerk memberships are the source of truth (Team page). Local
+    # organization_members lags when webhooks are missing.
+    seats = clerk_seats if clerk_seats is not None else db_seats
+    seats = min(max(1, seats), PLANS[plan].seats)
 
     try:
         txn = paddle_api.create_checkout_transaction(
             quantity=seats,
             clerk_org_id=auth_ctx.clerk_org_id,
             plan=plan,
+            interval=interval,
             paddle_customer_id=customer_id,
         )
     except paddle_api.PaddleError as e:
@@ -1132,10 +1146,43 @@ async def billing_checkout(
         "transaction_id": txn.get("id"),
         "quantity": seats,
         "plan": plan,
+        "interval": interval,
         "client_token": os.getenv("PADDLE_CLIENT_TOKEN", "") or None,
         "environment": os.getenv("PADDLE_ENVIRONMENT", "sandbox"),
-        "price_id": paddle_api.price_id_for_plan(plan),
+        "price_id": paddle_api.price_id_for_plan(plan, interval),
     }
+
+
+@app.post("/billing/lock-checkout")
+async def billing_lock_checkout(
+    body: LockCheckoutRequest,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Lock overlay checkout quantity to the org's member count."""
+    import paddle as paddle_api
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    if not paddle_api.configured():
+        raise HTTPException(status_code=503, detail="Billing is not configured.")
+
+    txn_id = (body.transaction_id or "").strip()
+    if not txn_id.startswith("txn_"):
+        raise HTTPException(status_code=400, detail="transaction_id required")
+
+    try:
+        txn = paddle_api.lock_checkout_transaction(
+            txn_id, clerk_org_id=auth_ctx.clerk_org_id
+        )
+    except paddle_api.PaddleError as e:
+        if e.status == 403:
+            raise HTTPException(status_code=403, detail="Not your checkout.")
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Checkout not found.")
+        print(f"Paddle lock-checkout error: {e} body={e.body}")
+        raise HTTPException(status_code=502, detail="Could not lock checkout quantity.")
+
+    return {"transaction_id": txn.get("id"), "status": txn.get("status")}
 
 
 @app.post("/billing/cancel")
@@ -1248,7 +1295,7 @@ async def paddle_webhook(request: Request):
 
 
 def _sync_paddle_seats(clerk_org_id: str) -> None:
-    """Best-effort: push local member count to Paddle quantity for paid Pro orgs."""
+    """Best-effort: push local member count to Paddle quantity for paid orgs."""
     import paddle as paddle_api
     from billing import count_members, resolve_entitlement
     from database import get_session

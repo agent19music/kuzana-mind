@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initializePaddle, type Paddle } from "@paddle/paddle-js";
 import { Button } from "../../../components/Button";
@@ -131,20 +131,18 @@ function RedeemPanel({ onRedeemed }: { onRedeemed: (e: BillingEntitlement) => vo
 
 type Props = {
   initial: BillingEntitlement;
-  orgId: string;
   countryCode?: string;
   customerEmail?: string | null;
 };
 
 export default function BillingClient({
   initial,
-  orgId,
   countryCode,
   customerEmail,
 }: Props) {
   const router = useRouter();
   const [entitlement, setEntitlement] = useState(initial);
-  const [interval, setInterval] = useState<BillingInterval>("month");
+  const [interval, setInterval] = useState<BillingInterval>("year");
   const [paddle, setPaddle] = useState<Paddle | null>(null);
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [loadingPrices, setLoadingPrices] = useState(true);
@@ -152,6 +150,12 @@ export default function BillingClient({
   const [error, setError] = useState("");
   const [configError, setConfigError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"starter" | "pro" | "advanced">("advanced");
+  const paddleRef = useRef<Paddle | null>(null);
+  const checkoutLockRef = useRef<{
+    transactionId: string;
+    quantity: number;
+    priceId: string;
+  } | null>(null);
 
   const plan = normalizePlan(entitlement.plan);
   const isPaid = isPaidEntitlement(entitlement);
@@ -170,8 +174,40 @@ export default function BillingClient({
       try {
         const environment = requirePaddleEnvironment();
         const token = requirePaddleClientToken();
-        const instance = await initializePaddle({ environment, token });
-        if (!cancelled && instance) setPaddle(instance);
+        const instance = await initializePaddle({
+          environment,
+          token,
+          eventCallback: (event) => {
+            const lock = checkoutLockRef.current;
+            const live = paddleRef.current;
+            if (!lock || !event.data) return;
+            if (event.data.transaction_id !== lock.transactionId) return;
+
+            const qty = event.data.items?.[0]?.quantity;
+            const qtyChanged = typeof qty === "number" && qty !== lock.quantity;
+            if (qtyChanged) {
+              live?.Checkout.updateItems([{ priceId: lock.priceId, quantity: lock.quantity }]);
+            }
+
+            if (qtyChanged || event.data.status === "ready") {
+              void fetch("/api/billing/lock-checkout", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ transaction_id: lock.transactionId }),
+              }).catch((err) => {
+                console.error("lock-checkout failed", err);
+              });
+            }
+
+            if (event.name === "checkout.completed" || event.name === "checkout.closed") {
+              checkoutLockRef.current = null;
+            }
+          },
+        });
+        if (!cancelled && instance) {
+          paddleRef.current = instance;
+          setPaddle(instance);
+        }
       } catch (err) {
         if (!cancelled) {
           setConfigError(
@@ -230,19 +266,33 @@ export default function BillingClient({
     router.refresh();
   }
 
-  function subscribe(tier: Tier) {
+  async function subscribe(tier: Tier) {
     if (!paddle) return;
     setBusy(true);
     setError("");
     try {
-      const priceId = tier.priceId[interval];
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: tier.id, interval }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : data.error || "Could not start checkout",
+        );
+      }
+      const transactionId = data.transaction_id as string | undefined;
+      const quantity = Math.max(1, Number(data.quantity) || entitlement.members || 1);
+      const priceId = (data.price_id as string | undefined) || tier.priceId[interval];
+      if (!transactionId) throw new Error("Could not start checkout");
+
+      checkoutLockRef.current = { transactionId, quantity, priceId };
       paddle.Checkout.open({
-        items: [{ priceId, quantity: 1 }],
+        transactionId,
         ...(customerEmail ? { customer: { email: customerEmail } } : {}),
-        customData: {
-          clerk_org_id: orgId,
-          plan: tier.id,
-        },
         settings: {
           displayMode: "overlay",
           variant: "one-page",
@@ -251,6 +301,7 @@ export default function BillingClient({
       });
       setTimeout(() => refresh(), 2500);
     } catch (err) {
+      checkoutLockRef.current = null;
       setError(err instanceof Error ? err.message : "Checkout failed");
     } finally {
       setBusy(false);
@@ -291,22 +342,6 @@ export default function BillingClient({
         </div>
       );
     }
-    if (!isPaid && tier.id === "starter" && plan === "starter") {
-      return (
-        <div
-          style={{
-            textAlign: "center",
-            fontSize: 13,
-            color: "#aaa",
-            padding: "10px",
-            border: "1px solid #F0F0F0",
-            borderRadius: 8,
-          }}
-        >
-          Current free plan
-        </div>
-      );
-    }
     const rank = { starter: 0, pro: 1, advanced: 2 } as const;
     if (isPaid && rank[plan] > rank[tier.id]) {
       return (
@@ -339,6 +374,7 @@ export default function BillingClient({
   function TierCard({ tier }: { tier: Tier }) {
     const priceId = tier.priceId[interval];
     const formatted = prices[priceId];
+    const priceLabel = loadingPrices ? "…" : formatted ?? "—";
     return (
       <div
         style={{
@@ -375,7 +411,7 @@ export default function BillingClient({
               minHeight: 40,
             }}
           >
-            {loadingPrices ? "…" : formatted ?? "—"}
+            {priceLabel}
             <span
               style={{
                 fontSize: 14,
@@ -384,7 +420,7 @@ export default function BillingClient({
                 marginLeft: 4,
               }}
             >
-              /{interval === "month" ? "mo" : "yr"}
+              / user / {interval === "month" ? "mo" : "yr"}
             </span>
           </p>
           <p
@@ -493,7 +529,7 @@ export default function BillingClient({
                   }}
                 >
                   {entitlement.plan_name}
-                  {!isPaid ? " · Free" : ""}
+                  {!isPaid ? " · Unpaid" : ""}
                   {isPaid && entitlement.source === "promo" ? " · Promo" : ""}
                 </p>
                 {periodLabel && (

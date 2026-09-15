@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
+function inviteLandingUrl(request: NextRequest) {
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin).replace(/\/$/, "");
+  return `${base}/invite`;
+}
+
 export async function POST(request: NextRequest) {
   const { orgId, orgRole, userId, getToken } = await auth();
 
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
       emailAddress: normalizedEmail,
       role: inviteRole,
       inviterUserId: userId ?? undefined,
-      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.athena.uzskicorp.agency"}/invite`,
+      redirectUrl: inviteLandingUrl(request),
     });
     return NextResponse.json({ id: invitation.id, email: invitation.emailAddress });
   } catch (err) {

@@ -49,15 +49,19 @@ PRs that touch Alembic / `database.py` / `requirements.txt` run `.github/workflo
 
 ## Billing (Paddle)
 
-Pro is billed via **Paddle Billing** (USD cards, per-seat quantity). Starter limits and promo entitlements live in Postgres (`org_subscriptions`, `promo_codes`). Env on Render + local `backend/.env`:
+Plans are billed via **Paddle Billing** (USD cards, per-seat quantity locked to the org member count). Catalog (monthly): **Starter $10/user**, **Pro $40/user**, **Advanced $120/user** (yearly prices in the same catalog). Starter is a paid plan. Promo entitlements live in Postgres (`org_subscriptions`, `promo_codes`).
+
+In-app billing and marketing (when the visitor is an org admin) create a server-side Paddle transaction, open the overlay with that `transaction_id`, and call `/billing/lock-checkout` so seat quantity cannot be edited in the overlay. Anonymous marketing visitors are sent to app register instead of an unlocked checkout.
+
+Env on Render + local `backend/.env`:
 
 | Variable | Notes |
 |---|---|
 | `PADDLE_API_KEY` | Server secret |
 | `PADDLE_WEBHOOK_SECRET` | Endpoint secret for `Paddle-Signature` |
-| `PADDLE_PRICE_ID_PRO` | Catalog price id (`pri_…`) for $10/seat/mo Pro |
-| `PADDLE_PRICE_ID_PLUS` | Catalog price id (`pri_…`) for $40/seat/mo Plus |
-| `PADDLE_CLIENT_TOKEN` | Client token for Paddle.js overlay (also expose as `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` on the app if you prefer) |
+| `PADDLE_PRICE_ID_PRO` | Optional override for Pro monthly (`pri_…`); defaults live in `backend/paddle.py` |
+| `PADDLE_PRICE_ID_ADVANCED` / `PADDLE_PRICE_ID_PLUS` | Optional override for Advanced monthly (`pri_…`) |
+| `PADDLE_CLIENT_TOKEN` | Client token for Paddle.js overlay (also expose as `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`) |
 | `PADDLE_ENVIRONMENT` | `sandbox` or `production` |
 
 Webhook URL: `POST https://<backend>/billing/webhooks/paddle`. Seed promo `ATHENA-EARLY` grants 30 days of Pro with no card.

@@ -31,7 +31,7 @@
 | Deploy switch | GitHub Actions variable `DEPLOY_TARGET`: `render` (live) vs `gcloud` (legacy Cloud Run). See `AGENTS.md`. |
 | Observability | Sentry SDK on the FastAPI app. Discord alerts via incoming webhook in `before_send` (Sentry's Discord integration is paid). |
 | Local backend | Always containerised. `docker compose up` — do not run host `pip`/`uvicorn` as the primary path. |
-| Billing | **Paddle Billing** (USD cards). Starter free; Pro $10/seat; Plus $40/seat (highlighted). Starter/Pro/Plus limits in `backend/billing.py`. Promo `ATHENA-EARLY` grants Pro. No M-Pesa in v1. |
+| Billing | **Paddle Billing** (USD cards, per seat). Starter $10/user; Pro $40/user; Advanced $120/user (highlighted). Quantity locked to org size via server checkout + lock-checkout. Limits in `backend/billing.py`. Promo `ATHENA-EARLY` grants Pro. No M-Pesa in v1. |
 
 ---
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { initializePaddle, type Paddle } from "@paddle/paddle-js";
 import {
@@ -20,6 +20,21 @@ type Props = {
   /** Prefill checkout when Clerk session is present. */
   customerEmail?: string | null;
 };
+
+const APP_URL = (
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://app.athena.uzskicorp.agency"
+).replace(/\/$/, "");
+
+function planIdForTier(tier: Tier): "starter" | "pro" | "advanced" {
+  const name = tier.name.toLowerCase();
+  if (name === "starter" || name === "pro" || name === "advanced") return name;
+  return "pro";
+}
+
+function appBillingRedirect(plan: string, interval: BillingInterval) {
+  const q = new URLSearchParams({ plan, interval });
+  return `${APP_URL}/register?${q.toString()}`;
+}
 
 const CheckIcon = () => (
   <svg
@@ -47,6 +62,12 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
   const [configError, setConfigError] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [openingTier, setOpeningTier] = useState<string | null>(null);
+  const paddleRef = useRef<Paddle | null>(null);
+  const checkoutLockRef = useRef<{
+    transactionId: string;
+    quantity: number;
+    priceId: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,8 +75,45 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
       try {
         const environment = requirePaddleEnvironment();
         const token = requirePaddleClientToken();
-        const instance = await initializePaddle({ environment, token });
-        if (!cancelled && instance) setPaddle(instance);
+        const instance = await initializePaddle({
+          environment,
+          token,
+          eventCallback: (event) => {
+            const lock = checkoutLockRef.current;
+            const live = paddleRef.current;
+            if (!lock || !event.data) return;
+            if (event.data.transaction_id !== lock.transactionId) return;
+
+            const qty = event.data.items?.[0]?.quantity;
+            const qtyChanged = typeof qty === "number" && qty !== lock.quantity;
+            if (qtyChanged) {
+              live?.Checkout.updateItems([
+                { priceId: lock.priceId, quantity: lock.quantity },
+              ]);
+            }
+
+            if (qtyChanged || event.data.status === "ready") {
+              void fetch("/api/billing/lock-checkout", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ transaction_id: lock.transactionId }),
+              }).catch((err) => {
+                console.error("lock-checkout failed", err);
+              });
+            }
+
+            if (
+              event.name === "checkout.completed" ||
+              event.name === "checkout.closed"
+            ) {
+              checkoutLockRef.current = null;
+            }
+          },
+        });
+        if (!cancelled && instance) {
+          paddleRef.current = instance;
+          setPaddle(instance);
+        }
       } catch (err) {
         if (!cancelled) {
           setConfigError(
@@ -84,9 +142,7 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
         }));
         const params = {
           items,
-          ...(countryCode
-            ? { address: { countryCode } }
-            : {}),
+          ...(countryCode ? { address: { countryCode } } : {}),
         };
         const preview = await paddle.PricePreview(params);
         if (cancelled) return;
@@ -115,14 +171,43 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
     };
   }, [paddle, interval, countryCode]);
 
-  const subscribe = (tier: Tier) => {
+  const subscribe = async (tier: Tier) => {
     if (!paddle) return;
     setOpeningTier(tier.name);
     setCheckoutError(null);
+    const plan = planIdForTier(tier);
     try {
-      const priceId = tier.priceId[interval];
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, interval }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      // Anonymous / non-admin / no org: send to app register — never open
+      // an unlocked quantity-editable overlay from marketing.
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = appBillingRedirect(plan, interval);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : data.error || "Could not start checkout",
+        );
+      }
+
+      const transactionId = data.transaction_id as string | undefined;
+      const quantity = Math.max(1, Number(data.quantity) || 1);
+      const priceId =
+        (data.price_id as string | undefined) || tier.priceId[interval];
+      if (!transactionId) throw new Error("Could not start checkout");
+
+      checkoutLockRef.current = { transactionId, quantity, priceId };
       paddle.Checkout.open({
-        items: [{ priceId, quantity: 1 }],
+        transactionId,
         ...(customerEmail ? { customer: { email: customerEmail } } : {}),
         settings: {
           displayMode: "overlay",
@@ -131,6 +216,7 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
         },
       });
     } catch (err) {
+      checkoutLockRef.current = null;
       setCheckoutError(
         err instanceof Error ? err.message : "Could not open checkout.",
       );
@@ -199,7 +285,8 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
             lineHeight: 1.6,
           }}
         >
-          Localized prices. Seven-day free trial on every plan.
+          Localized prices. Seven-day free trial on every plan. Billed per seat
+          at your team size.
         </motion.p>
 
         <div
@@ -331,9 +418,7 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
                         lineHeight: 1,
                       }}
                     >
-                      {loadingPrices
-                        ? "…"
-                        : formatted ?? "—"}
+                      {loadingPrices ? "…" : formatted ?? "—"}
                     </span>
                     <span
                       style={{
@@ -343,7 +428,7 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
                           : "var(--foreground-subtle)",
                       }}
                     >
-                      /{interval === "month" ? "mo" : "yr"}
+                      / user / {interval === "month" ? "mo" : "yr"}
                     </span>
                   </div>
                   <p
@@ -414,7 +499,7 @@ export default function PricingSection({ countryCode, customerEmail }: Props) {
                 <button
                   type="button"
                   disabled={!!configError || !paddle || loadingPrices}
-                  onClick={() => subscribe(tier)}
+                  onClick={() => void subscribe(tier)}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",

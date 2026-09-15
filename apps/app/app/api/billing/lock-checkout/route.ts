@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
@@ -11,36 +11,25 @@ export async function POST(request: NextRequest) {
   const token = await getToken();
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let plan = "pro";
-  let interval = "month";
+  let transactionId = "";
   try {
     const body = await request.json();
-    if (typeof body?.plan === "string") plan = body.plan;
-    if (body?.interval === "year" || body?.interval === "month") interval = body.interval;
+    if (typeof body?.transaction_id === "string") transactionId = body.transaction_id;
   } catch {
-    /* no body — default Pro monthly */
+    /* invalid body */
   }
-
-  let quantity = 1;
-  try {
-    const client = await clerkClient();
-    const memberships = await client.organizations.getOrganizationMembershipList({
-      organizationId: orgId,
-      limit: 100,
-    });
-    quantity = Math.max(1, memberships.totalCount ?? memberships.data.length ?? 1);
-  } catch {
-    /* backend will fall back to its local count */
+  if (!transactionId) {
+    return NextResponse.json({ error: "transaction_id required" }, { status: 400 });
   }
 
   try {
-    const res = await fetch(`${BACKEND_URL}/billing/checkout`, {
+    const res = await fetch(`${BACKEND_URL}/billing/lock-checkout`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ plan, interval, quantity }),
+      body: JSON.stringify({ transaction_id: transactionId }),
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });

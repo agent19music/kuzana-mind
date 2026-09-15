@@ -26,7 +26,7 @@ const FALLBACK: BillingEntitlement = {
     upload_files: 10,
     source_types: 2,
     drive: false,
-    price_per_seat_usd_cents: 0,
+    price_per_seat_usd_cents: 1000,
   },
   client_token: process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? null,
   environment: process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT ?? "",
@@ -90,6 +90,7 @@ export default async function BillingPage() {
   try {
     const { clerkClient } = await import("@clerk/nextjs/server");
     const client = await clerkClient();
+    // totalCount preferred; membership list itself is capped at 100.
     const memberships = await client.organizations.getOrganizationMembershipList({
       organizationId: orgId,
       limit: 100,
@@ -105,7 +106,6 @@ export default async function BillingPage() {
   return (
     <BillingClient
       initial={entitlement}
-      orgId={orgId}
       countryCode={countryCode}
       customerEmail={customerEmail}
     />

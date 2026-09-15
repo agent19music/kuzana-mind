@@ -22,11 +22,12 @@ PlanAction = Literal[
     "drive",
 ]
 # `plus` kept as a legacy alias of `advanced`.
-PAID_PLANS: frozenset[PlanId] = frozenset({"pro", "advanced", "plus"})
+PAID_PLANS: frozenset[PlanId] = frozenset({"starter", "pro", "advanced", "plus"})
 
 PAST_DUE_GRACE_DAYS = int(os.getenv("BILLING_PAST_DUE_GRACE_DAYS", "3"))
-PRO_PRICE_USD_CENTS = 4000        # Pro $40 / month
-ADVANCED_PRICE_USD_CENTS = 12000  # Advanced $120 / month
+STARTER_PRICE_USD_CENTS = 1000    # Starter $10 / user / month
+PRO_PRICE_USD_CENTS = 4000        # Pro $40 / user / month
+ADVANCED_PRICE_USD_CENTS = 12000  # Advanced $120 / user / month
 PLUS_PRICE_USD_CENTS = ADVANCED_PRICE_USD_CENTS  # legacy alias
 
 
@@ -51,7 +52,7 @@ PLANS: dict[PlanId, PlanLimits] = {
         upload_files=10,
         source_types=2,
         drive=False,
-        price_per_seat_usd_cents=0,
+        price_per_seat_usd_cents=STARTER_PRICE_USD_CENTS,
     ),
     "pro": PlanLimits(
         id="pro",
