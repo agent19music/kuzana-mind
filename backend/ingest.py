@@ -744,6 +744,9 @@ async def persist_form_submissions(org_id: str, docs: list[dict]) -> dict:
                 ))
         session.commit()
 
+        # New transaction: session_for_org re-applies SET LOCAL ROLE + GUC on
+        # after_begin. Without that, FORCE RLS rejects form_responses inserts.
+
         for sub in submissions:
             response = (
                 session.query(FormResponse)

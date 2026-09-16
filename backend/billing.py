@@ -209,19 +209,23 @@ def resolve_entitlement(session: Session, clerk_org_id: str) -> Entitlement:
 
 
 def count_upload_files(session: Session, org_id: str) -> int:
-    from database import DocumentFile
+    from database import DocumentFile, session_for_org
 
-    return (
-        session.query(DocumentFile)
-        .filter(DocumentFile.org_id == org_id, DocumentFile.source_type == "upload")
-        .count()
-    )
+    # Tenant tables have FORCE RLS. The billing session is usually the DB owner
+    # without athena.org_id set, so a direct count returns 0 on Render.
+    with session_for_org(org_id) as scoped:
+        return (
+            scoped.query(DocumentFile)
+            .filter(DocumentFile.org_id == org_id, DocumentFile.source_type == "upload")
+            .count()
+        )
 
 
 def count_chunks(session: Session, org_id: str) -> int:
-    from database import DocumentChunk
+    from database import DocumentChunk, session_for_org
 
-    return session.query(DocumentChunk).filter(DocumentChunk.org_id == org_id).count()
+    with session_for_org(org_id) as scoped:
+        return scoped.query(DocumentChunk).filter(DocumentChunk.org_id == org_id).count()
 
 
 def count_members(session: Session, clerk_org_id: str) -> int:
