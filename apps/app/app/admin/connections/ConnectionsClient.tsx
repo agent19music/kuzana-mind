@@ -611,6 +611,7 @@ export default function ConnectionsClient({
   const router = useRouter();
   const [configuring, setConfiguring] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  const [dismissedJobErrorId, setDismissedJobErrorId] = useState<string | null>(null);
   const driveAllowed = stats?.limits?.drive === true || stats?.plan === "pro" || stats?.plan === "plus" || stats?.plan === "advanced";
 
   useEffect(() => {
@@ -839,20 +840,76 @@ export default function ConnectionsClient({
         ))}
       </div>
 
-      {latestJob?.status === "failed" && latestJob.error && (
-        <div className="notice notice-danger" style={{ marginBottom: 20 }}>
-          Last sync failed: {latestJob.error}
+      {latestJob?.status === "failed" &&
+        latestJob.error &&
+        dismissedJobErrorId !== latestJob.id && (
+        <div
+          className="notice notice-danger"
+          style={{
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            justifyContent: "space-between",
+          }}
+          role="alert"
+        >
+          <span style={{ flex: 1, minWidth: 0 }}>
+            Last sync failed: {latestJob.error}
+          </span>
+          <button
+            type="button"
+            aria-label="Dismiss error"
+            onClick={() => setDismissedJobErrorId(latestJob.id)}
+            style={{
+              flexShrink: 0,
+              border: "none",
+              background: "transparent",
+              color: "inherit",
+              cursor: "pointer",
+              fontSize: 18,
+              lineHeight: 1,
+              padding: "0 2px",
+              opacity: 0.7,
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
 
-            {banner && (
-        <p
+      {banner && (
+        <div
           className="notice notice-info"
-          style={{ margin: "0 0 16px" }}
+          style={{
+            margin: "0 0 16px",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            justifyContent: "space-between",
+          }}
           role="status"
         >
-          {banner}
-        </p>
+          <span style={{ flex: 1, minWidth: 0 }}>{banner}</span>
+          <button
+            type="button"
+            aria-label="Dismiss notice"
+            onClick={() => setBanner(null)}
+            style={{
+              flexShrink: 0,
+              border: "none",
+              background: "transparent",
+              color: "inherit",
+              cursor: "pointer",
+              fontSize: 18,
+              lineHeight: 1,
+              padding: "0 2px",
+              opacity: 0.7,
+            }}
+          >
+            ×
+          </button>
+        </div>
       )}
 
 <div

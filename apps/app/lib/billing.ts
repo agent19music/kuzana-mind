@@ -14,6 +14,7 @@ export type BillingEntitlement = {
   plan: BillingPlanId;
   plan_name: string;
   status: string;
+  is_paid?: boolean;
   source: string | null;
   period_end: string | null;
   seats_billed: number;
@@ -42,6 +43,7 @@ export function normalizePlan(plan: string | null | undefined): NormalizedPlanId
 }
 
 export function isPaidEntitlement(ent: BillingEntitlement): boolean {
+  if (typeof ent.is_paid === "boolean") return ent.is_paid;
   return ent.source === "paddle" || ent.source === "promo";
 }
 

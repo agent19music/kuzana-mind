@@ -209,6 +209,7 @@ export default function FilesPage() {
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [paid, setPaid] = useState<boolean | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const queueRef = useRef<QueueItem[]>([]);
@@ -217,6 +218,30 @@ export default function FilesPage() {
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/billing/entitlement", { cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) setPaid(true); // fail open for read; upload still backend-gated
+          return;
+        }
+        const ent = await res.json();
+        const isPaid = ent.is_paid === true || ent.source === "paddle" || ent.source === "promo";
+        if (!cancelled) setPaid(isPaid);
+        if (!isPaid) {
+          window.location.replace("/admin/billing?welcome=1");
+        }
+      } catch {
+        if (!cancelled) setPaid(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadFiles = useCallback(async () => {
     try {
@@ -331,6 +356,10 @@ export default function FilesPage() {
   }, [processItem]);
 
   const uploadFiles = useCallback((filesToUpload: File[]) => {
+    if (paid === false) {
+      window.location.replace("/admin/billing?welcome=1");
+      return;
+    }
     if (!filesToUpload.length) return;
     const newItems: QueueItem[] = filesToUpload.map((file) => ({
       id: crypto.randomUUID(),
@@ -341,7 +370,7 @@ export default function FilesPage() {
     }));
     setQueue((prev) => [...prev, ...newItems]);
     runQueue(newItems);
-  }, [runQueue]);
+  }, [runQueue, paid]);
 
   const retryItem = useCallback((id: string) => {
     const item = queueRef.current.find((q) => q.id === id);

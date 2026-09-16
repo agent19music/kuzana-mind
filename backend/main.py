@@ -612,6 +612,40 @@ class IngestRequest(BaseModel):
     trigger: str = "manual"
 
 
+
+class EnsureOrgRequest(BaseModel):
+    org_id: str
+    org_name: str | None = None
+    org_logo_url: str | None = None
+
+
+@app.post("/organizations/ensure")
+async def ensure_organization(
+    request: EnsureOrgRequest,
+    _: None = Depends(require_backend_secret),
+):
+    """Create a minimal organizations row for a Clerk org if missing.
+
+    Used by onboarding when no knowledge sources are connected yet — so we do
+    not open an empty ingest_jobs row, but still satisfy FKs for later writes.
+    """
+    from database import Organization, get_session
+
+    if not request.org_id:
+        raise HTTPException(status_code=400, detail="org_id is required")
+    ensure_organization_exists(request.org_id, request.org_name)
+    if request.org_name or request.org_logo_url:
+        with get_session() as session:
+            org = session.query(Organization).filter_by(clerk_org_id=request.org_id).first()
+            if org:
+                if request.org_name:
+                    org.name = request.org_name
+                if request.org_logo_url:
+                    org.logo_url = request.org_logo_url
+                session.commit()
+    return {"ok": True, "org_id": request.org_id}
+
+
 @app.post("/ingest", status_code=202)
 async def ingest(
     background_tasks: BackgroundTasks,
@@ -633,6 +667,10 @@ async def ingest(
     req = request or IngestRequest()
     if not req.org_id:
         raise HTTPException(status_code=400, detail="org_id is required for ingestion.")
+
+    # Onboarding / first sync can arrive before the Clerk webhook wrote the org
+    # row. ingest_jobs FK requires organizations.clerk_org_id — create it now.
+    ensure_organization_exists(req.org_id, req.org_name)
 
     # Plan gates: Drive is Pro-only; Starter is capped at 2 connector types.
     # Checked before we create a job so a blocked connect doesn't leave a
@@ -896,6 +934,8 @@ async def save_tally_oauth(
     if not auth_ctx.is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
 
+    from billing import require_plan_capacity, source_keys_after_ingest
+
     access = (body.access_token or "").strip()
     if not access:
         raise HTTPException(status_code=400, detail="access_token required")
@@ -904,6 +944,14 @@ async def save_tally_oauth(
 
     with get_session() as db:
         org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        proposed = source_keys_after_ingest(
+            org,
+            tally_api_key=access,
+            tally_form_ids=form_ids or (org.tally_form_ids if org else None),
+        )
+        require_plan_capacity(
+            db, auth_ctx.clerk_org_id, "add_source", proposed_sources=proposed
+        )
         if not org:
             org = Organization(
                 clerk_org_id=auth_ctx.clerk_org_id,
@@ -1014,6 +1062,8 @@ async def save_notion_oauth(
     if not auth_ctx.is_admin:
         raise HTTPException(status_code=403, detail="Admin only")
 
+    from billing import require_plan_capacity, source_keys_after_ingest
+
     access = (body.access_token or "").strip()
     if not access:
         raise HTTPException(status_code=400, detail="access_token required")
@@ -1022,6 +1072,15 @@ async def save_notion_oauth(
 
     with get_session() as db:
         org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        root_for_gate = root or (org.notion_root_page_id if org else None)
+        proposed = source_keys_after_ingest(
+            org,
+            notion_api_key=access,
+            notion_root_page_id=root_for_gate,
+        )
+        require_plan_capacity(
+            db, auth_ctx.clerk_org_id, "add_source", proposed_sources=proposed
+        )
         if not org:
             org = Organization(
                 clerk_org_id=auth_ctx.clerk_org_id,

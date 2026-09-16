@@ -333,6 +333,8 @@ _STARTER_SYSTEM = (
     "Write 4 questions a staff member would actually type. Each question MUST "
     "be answerable from the excerpts — names, processes, policies, or facts "
     "that appear there. Prefer uploaded files when those excerpts are present. "
+    "Keep each question under 90 characters. Ask about the topic or rule, not "
+    "the full document filename. Do not paste long titles into the question. "
     "Be specific. Do not invent generic HR/IT questions (expense claims, leave "
     "policy, IT access) unless those topics are in the excerpts. Sentence case, "
     "no numbering, no quotes around the questions."
@@ -344,6 +346,8 @@ def _starter_questions_sync(excerpts: list[dict]) -> list[str]:
     for i, item in enumerate(excerpts, start=1):
         source = item.get("source_type") or "doc"
         title = (item.get("title") or "Untitled").strip()
+        if len(title) > 60:
+            title = title[:57].rsplit(" ", 1)[0].rstrip(" -_.,") + "…"
         text = (item.get("excerpt") or "").strip()
         blocks.append(f"[{i} | {source} | {title}]\n{text}")
     prompt = "Excerpts:\n\n" + "\n\n".join(blocks) + "\n\nJSON:"
@@ -373,7 +377,10 @@ def _starter_questions_sync(excerpts: list[dict]) -> list[str]:
         if len(q) < 12 or key in seen:
             continue
         seen.add(key)
-        out.append(q[:140])
+        if len(q) > 90:
+            cut = q[:87].rsplit(" ", 1)[0].rstrip(" ?.,;:")
+            q = (cut or q[:87]).rstrip("?") + "?"
+        out.append(q)
         if len(out) >= 6:
             break
     return out

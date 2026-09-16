@@ -59,6 +59,16 @@ export default async function ConnectionsPage() {
       if (statusRes.ok) jobs = (await statusRes.json()).jobs ?? [];
       if (notifyRes.ok) notifiedIntegrations = (await notifyRes.json()).integrations ?? [];
       if (connRes.ok) connectors = (await connRes.json()).connectors ?? {};
+
+      const entRes = await fetch(`${BACKEND_URL}/billing/entitlement`, {
+        headers,
+        cache: "no-store",
+      });
+      if (entRes.ok) {
+        const ent = await entRes.json();
+        const paid = ent.is_paid === true || ent.source === "paddle" || ent.source === "promo";
+        if (!paid) redirect("/admin/billing?welcome=1");
+      }
     }
   } catch {
     /* backend unreachable — client renders with empty state */

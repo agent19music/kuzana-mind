@@ -812,8 +812,13 @@ def create_ingest_job(org_id: str, trigger: str = "manual") -> str:
     handing off to a background task, and return the id to the caller. Without
     that, a client has no handle to poll and can only guess when a sync
     finished — which is why the connections page used to need a hard refresh.
+
+    Ensures the organizations FK target exists first — onboarding often hits
+    /ingest for a brand-new Clerk org before any webhook/row upsert ran, and
+    ingest_jobs.org_id has a NOT NULL FK to organizations.clerk_org_id.
     """
-    from database import IngestJob
+    from database import IngestJob, ensure_organization_exists
+    ensure_organization_exists(org_id)
     with get_session() as session:
         job = IngestJob(org_id=org_id, status="running", trigger=trigger)
         session.add(job)

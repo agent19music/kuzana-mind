@@ -6,12 +6,12 @@ import { motion } from "framer-motion";
 const staticIntegrations = [
   {
     name: "Google Docs",
-    description: "Policies, playbooks, and internal docs — indexed automatically.",
+    description: "Policies, playbooks, and internal docs — indexed on your stack.",
     iconSrc: "/icons/google-docs.png",
   },
   {
     name: "Google Drive",
-    description: "Shared Drives and folders — service account access, fully secure.",
+    description: "Shared Drives and folders — service-account access under your IAM.",
     iconSrc: "/icons/google-drive.svg",
   },
 ];
@@ -70,7 +70,7 @@ export default function Integrations() {
             maxWidth: 500,
           }}
         >
-          Connects to where your knowledge already lives.
+          Connect sources without relocating your data to another AI vendor.
         </motion.h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: "var(--space-6)" }}>

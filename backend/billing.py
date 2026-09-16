@@ -1,7 +1,8 @@
 """Plan catalog, entitlement resolution, and capacity checks.
 
-Source of truth for Starter / Pro / Plus limits. Next.js and Paddle must not invent
-their own caps — every mutating path calls require_plan_capacity / resolve_entitlement.
+Source of truth for Starter / Pro / Advanced limits. There is no free plan: unpaid
+orgs get zero ingest/upload capacity until a Paddle trial or paid sub (or promo).
+Next.js must not invent caps — mutating paths call require_plan_capacity.
 """
 from __future__ import annotations
 
@@ -88,6 +89,18 @@ PLANS["plus"] = PlanLimits(
     price_per_seat_usd_cents=ADVANCED_PRICE_USD_CENTS,
 )
 
+# Unpaid / no subscription — seat for the creating admin only; no ingest or uploads.
+UNPAID_LIMITS = PlanLimits(
+    id="starter",
+    name="No plan",
+    seats=1,
+    chunks=0,
+    upload_files=0,
+    source_types=0,
+    drive=False,
+    price_per_seat_usd_cents=STARTER_PRICE_USD_CENTS,
+)
+
 
 @dataclass
 class Entitlement:
@@ -102,7 +115,7 @@ class Entitlement:
 
     @property
     def is_paid(self) -> bool:
-        # Free Starter has plan=starter and source=None — not paid.
+        # Paid or trialing via Paddle/promo. Unpaid orgs have source=None.
         return self.source in ("paddle", "promo") and self.plan in (
             "starter",
             "pro",
@@ -140,13 +153,13 @@ def resolve_entitlement(session: Session, clerk_org_id: str) -> Entitlement:
     if not row:
         return Entitlement(
             plan="starter",
-            status="active",
+            status="none",
             source=None,
             seats_billed=1,
             current_period_end=None,
             paddle_customer_id=None,
             paddle_subscription_id=None,
-            limits=PLANS["starter"],
+            limits=UNPAID_LIMITS,
         )
 
     now = _utcnow()
@@ -185,13 +198,13 @@ def resolve_entitlement(session: Session, clerk_org_id: str) -> Entitlement:
 
     return Entitlement(
         plan="starter",
-        status=status if status else "active",
+        status=status if status else "none",
         source=source or None,
         seats_billed=max(1, int(row.seats or 1)),
         current_period_end=period_end,
         paddle_customer_id=row.paddle_customer_id,
         paddle_subscription_id=row.paddle_subscription_id,
-        limits=PLANS["starter"],
+        limits=UNPAID_LIMITS,
     )
 
 
@@ -291,6 +304,28 @@ def _limit_error(
     )
 
 
+def require_subscription(session: Session, clerk_org_id: str) -> Entitlement:
+    """Raise 402 when the org has no active/trialing Paddle or promo entitlement."""
+    ent = resolve_entitlement(session, clerk_org_id)
+    if ent.is_paid:
+        return ent
+    raise HTTPException(
+        status_code=402,
+        detail={
+            "code": "subscription_required",
+            "limit_name": "subscription",
+            "used": 0,
+            "limit": 0,
+            "plan": ent.plan,
+            "upgrade_path": "/admin/billing",
+            "message": (
+                "Start a 7-day free trial to connect knowledge sources and upload files. "
+                "There is no free plan."
+            ),
+        },
+    )
+
+
 def require_plan_capacity(
     session: Session,
     clerk_org_id: str,
@@ -301,9 +336,28 @@ def require_plan_capacity(
     extra_seats: int = 0,
     proposed_sources: set[str] | None = None,
 ) -> Entitlement:
-    """Raise HTTP 402 when the action would exceed the org's effective plan."""
+    """Raise HTTP 402 when unpaid, or when the action would exceed plan limits."""
     ent = resolve_entitlement(session, clerk_org_id)
     limits = ent.limits
+
+    # Integrations + uploads require a trial or paid plan. Seat invites for the
+    # founding admin are allowed so the org can still be set up.
+    if action in ("upload_files", "add_chunks", "add_source", "drive") and not ent.is_paid:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "code": "subscription_required",
+                "limit_name": action,
+                "used": 0,
+                "limit": 0,
+                "plan": ent.plan,
+                "upgrade_path": "/admin/billing",
+                "message": (
+                    "Start a 7-day free trial to connect knowledge sources and upload files. "
+                    "There is no free plan."
+                ),
+            },
+        )
 
     if action == "drive":
         if not limits.drive:
@@ -389,6 +443,7 @@ def usage_snapshot(session: Session, clerk_org_id: str, *, member_count: int | N
         "plan": ent.plan,
         "plan_name": limits.name,
         "status": ent.status,
+        "is_paid": ent.is_paid,
         "source": ent.source,
         "period_end": ent.current_period_end.isoformat() if ent.current_period_end else None,
         "seats_billed": ent.seats_billed,

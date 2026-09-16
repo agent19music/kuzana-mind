@@ -65,9 +65,9 @@ export default function Hero() {
             maxWidth: 900,
           }}
         >
-          Your team's
+          Your knowledge.
           <br />
-          second brain.
+          Your compute.
         </h1>
 
         <p
@@ -77,12 +77,13 @@ export default function Hero() {
             fontWeight: 400,
             lineHeight: 1.6,
             marginBottom: "var(--space-4)",
-            maxWidth: 500,
+            maxWidth: 540,
           }}
         >
-          Connect your Google Workspace and Notion. Give every team member
-          instant answers from your organization's knowledge — no searching, no
-          asking around.
+          Athena is privacy-first knowledge infrastructure you run on your side
+          of the wall. Connect Google Workspace and Notion, answer from your
+          own corpus — without handing proprietary documents to consumer AI
+          products.
         </p>
 
         {/* Integration badges */}

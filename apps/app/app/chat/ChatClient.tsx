@@ -420,16 +420,36 @@ export default function ChatClient({ suggestions = [] }: { suggestions?: string[
                   <div
                     style={{
                       display: "flex",
-                      flexWrap: "wrap",
+                      flexDirection: "column",
                       gap: "var(--space-3)",
-                      justifyContent: "center",
-                      maxWidth: 560,
+                      alignItems: "stretch",
+                      width: "100%",
+                      maxWidth: 640,
                     }}
                   >
                     {suggestions.map((s) => (
-                      <Button key={s} onClick={() => submit(s)} variant="secondary" full>
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => submit(s)}
+                        className="btn btn-secondary"
+                        style={{
+                          width: "100%",
+                          whiteSpace: "normal",
+                          textAlign: "left",
+                          lineHeight: 1.45,
+                          height: "auto",
+                          minHeight: 40,
+                          padding: "10px 16px",
+                          borderRadius: 9999,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
                         {s}
-                      </Button>
+                      </button>
                     ))}
                   </div>
                   )}

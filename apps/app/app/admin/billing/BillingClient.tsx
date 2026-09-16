@@ -142,6 +142,13 @@ export default function BillingClient({
 }: Props) {
   const router = useRouter();
   const [entitlement, setEntitlement] = useState(initial);
+  const [welcomeTrial, setWelcomeTrial] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("welcome") === "1" || params.get("trial") === "1") {
+      setWelcomeTrial(true);
+    }
+  }, []);
   const [interval, setInterval] = useState<BillingInterval>("year");
   const [paddle, setPaddle] = useState<Paddle | null>(null);
   const [prices, setPrices] = useState<Record<string, string>>({});
@@ -177,6 +184,9 @@ export default function BillingClient({
         const instance = await initializePaddle({
           environment,
           token,
+          ...(initial.paddle_customer_id
+            ? { pwCustomer: { id: initial.paddle_customer_id } }
+            : {}),
           eventCallback: (event) => {
             const lock = checkoutLockRef.current;
             const live = paddleRef.current;
@@ -507,6 +517,21 @@ export default function BillingClient({
             </h1>
           </div>
 
+          {(welcomeTrial || !isPaid) && (
+            <div
+              className="notice notice-warning"
+              style={{ marginBottom: 20 }}
+              role="status"
+            >
+              <strong style={{ fontWeight: 400 }}>
+                {welcomeTrial ? "Welcome to Athena. " : ""}
+              </strong>
+              Every plan includes a <strong style={{ fontWeight: 400 }}>7-day free trial</strong>.
+              Start a trial to connect Notion, Tally, and other sources, and to upload files.
+              There is no free plan — pick Starter, Pro, or Advanced below.
+            </div>
+          )}
+
           <div
             style={{
               background: "#fff",
@@ -529,7 +554,7 @@ export default function BillingClient({
                   }}
                 >
                   {entitlement.plan_name}
-                  {!isPaid ? " · Unpaid" : ""}
+                  {!isPaid ? " · Choose a plan to start" : entitlement.status === "trialing" ? " · Trial" : ""}
                   {isPaid && entitlement.source === "promo" ? " · Promo" : ""}
                 </p>
                 {periodLabel && (
