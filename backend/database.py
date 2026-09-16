@@ -18,6 +18,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy import event
 from sqlalchemy.orm import DeclarativeBase, Session
 from sqlalchemy.sql import func
 
@@ -490,10 +491,14 @@ def session_for_org(org_id: str):
     """
     An org-scoped session for every query that touches tenant data (documents).
 
-    Inside a single transaction it (1) switches to the non-superuser APP_ROLE so
+    Inside each transaction it (1) switches to the non-superuser APP_ROLE so
     row-level security is actually enforced, and (2) publishes the org id as the
     `athena.org_id` GUC that the RLS policy reads. If application code ever forgets
     a WHERE org_id filter, the database still returns/writes only this org's rows.
+
+    SET LOCAL is transaction-scoped. A mid-session commit (Tally dual-write does
+    this) starts a new transaction with no GUC — FORCE RLS then rejects INSERTs
+    and hides SELECTs. Re-apply on after_begin so every transaction is scoped.
 
     org_id must be a non-empty string — callers upstream (require_auth) guarantee it.
     """
@@ -501,13 +506,17 @@ def session_for_org(org_id: str):
         raise ValueError("session_for_org requires a non-empty org_id")
 
     session = Session(engine)
-    try:
-        # SET LOCAL is scoped to the current transaction; both statements begin it.
-        session.execute(text(f'SET LOCAL ROLE "{APP_ROLE}"'))
-        session.execute(
+
+    def _apply_rls(_session, _transaction, connection) -> None:
+        connection.execute(text(f'SET LOCAL ROLE "{APP_ROLE}"'))
+        connection.execute(
             text("SELECT set_config('athena.org_id', :org_id, true)"),
             {"org_id": org_id},
         )
+
+    event.listen(session, "after_begin", _apply_rls)
+    try:
         yield session
     finally:
+        event.remove(session, "after_begin", _apply_rls)
         session.close()
