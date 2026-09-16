@@ -27,17 +27,22 @@ PADDLE_PRICE_ID_PLUS = os.getenv("PADDLE_PRICE_ID_PLUS", "")
 PADDLE_PRICE_ID_ADVANCED = os.getenv("PADDLE_PRICE_ID_ADVANCED", "") or PADDLE_PRICE_ID_PLUS
 PADDLE_ENVIRONMENT = os.getenv("PADDLE_ENVIRONMENT", "sandbox").lower()
 
-# Sandbox catalog created for Athena (month + year). Env overrides win when set.
+# Sandbox + live catalogs (month + year). Env overrides win when set.
 _DEFAULT_PRICE_PLAN: dict[str, str] = {
-    # Starter
+    # Sandbox
     "pri_01m215b0ecq2b4ax936hxkg1zp": "starter",
     "pri_01m215b1hh683530gdj8xcc8c1": "starter",
-    # Pro
     "pri_01m215b3khx25g48jem5rbk8tb": "pro",
     "pri_01m215b4y93q0h63peaj2w7ga6": "pro",
-    # Advanced
     "pri_01m215b757n462c86r7tev62vq": "advanced",
     "pri_01m215b83z0avwsv0va5tdxteq": "advanced",
+    # Live
+    "pri_01m2n22xz6j0kh3p2c96j8jwgp": "starter",
+    "pri_01m2n22y0mdh7gknan1vqes5m4": "starter",
+    "pri_01m2n22y5j4k2q8tz7w3eya9sz": "pro",
+    "pri_01m2n22y7mabz8n6xw9evtngrq": "pro",
+    "pri_01m2n22yc5pvsm72mymt36w615": "advanced",
+    "pri_01m2n22ydjtpk7s1dv64r5zfjb": "advanced",
 }
 
 _API_BASE = (
@@ -66,7 +71,7 @@ def catalog_price_ids() -> dict[str, str]:
     return mapping
 
 
-_DEFAULT_PRICE_IDS: dict[tuple[str, str], str] = {
+_SANDBOX_PRICE_IDS: dict[tuple[str, str], str] = {
     ("starter", "month"): "pri_01m215b0ecq2b4ax936hxkg1zp",
     ("starter", "year"): "pri_01m215b1hh683530gdj8xcc8c1",
     ("pro", "month"): "pri_01m215b3khx25g48jem5rbk8tb",
@@ -74,6 +79,19 @@ _DEFAULT_PRICE_IDS: dict[tuple[str, str], str] = {
     ("advanced", "month"): "pri_01m215b757n462c86r7tev62vq",
     ("advanced", "year"): "pri_01m215b83z0avwsv0va5tdxteq",
 }
+
+_LIVE_PRICE_IDS: dict[tuple[str, str], str] = {
+    ("starter", "month"): "pri_01m2n22xz6j0kh3p2c96j8jwgp",
+    ("starter", "year"): "pri_01m2n22y0mdh7gknan1vqes5m4",
+    ("pro", "month"): "pri_01m2n22y5j4k2q8tz7w3eya9sz",
+    ("pro", "year"): "pri_01m2n22y7mabz8n6xw9evtngrq",
+    ("advanced", "month"): "pri_01m2n22yc5pvsm72mymt36w615",
+    ("advanced", "year"): "pri_01m2n22ydjtpk7s1dv64r5zfjb",
+}
+
+_DEFAULT_PRICE_IDS = (
+    _LIVE_PRICE_IDS if PADDLE_ENVIRONMENT == "production" else _SANDBOX_PRICE_IDS
+)
 
 
 def price_id_for_plan(plan: str, interval: str = "month") -> str:

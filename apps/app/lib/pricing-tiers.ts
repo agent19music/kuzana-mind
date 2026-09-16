@@ -1,6 +1,7 @@
 /**
  * Editable Paddle catalog mapping (shared with marketing pricing).
- * Price IDs are public — safe in the client bundle.
+ * Price IDs are public — safe in the client bundle. Live vs sandbox is
+ * chosen from NEXT_PUBLIC_PADDLE_ENVIRONMENT at build time.
  */
 export interface Tier {
   id: "starter" | "pro" | "advanced";
@@ -10,6 +11,38 @@ export interface Tier {
   priceId: { month: string; year: string };
   highlight?: boolean;
 }
+
+const LIVE = process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT === "production";
+
+const CATALOG = {
+  starter: LIVE
+    ? {
+        month: "pri_01m2n22xz6j0kh3p2c96j8jwgp",
+        year: "pri_01m2n22y0mdh7gknan1vqes5m4",
+      }
+    : {
+        month: "pri_01m215b0ecq2b4ax936hxkg1zp",
+        year: "pri_01m215b1hh683530gdj8xcc8c1",
+      },
+  pro: LIVE
+    ? {
+        month: "pri_01m2n22y5j4k2q8tz7w3eya9sz",
+        year: "pri_01m2n22y7mabz8n6xw9evtngrq",
+      }
+    : {
+        month: "pri_01m215b3khx25g48jem5rbk8tb",
+        year: "pri_01m215b4y93q0h63peaj2w7ga6",
+      },
+  advanced: LIVE
+    ? {
+        month: "pri_01m2n22yc5pvsm72mymt36w615",
+        year: "pri_01m2n22ydjtpk7s1dv64r5zfjb",
+      }
+    : {
+        month: "pri_01m215b757n462c86r7tev62vq",
+        year: "pri_01m215b83z0avwsv0va5tdxteq",
+      },
+} as const;
 
 export const TIERS: Tier[] = [
   {
@@ -26,10 +59,7 @@ export const TIERS: Tier[] = [
       "7-day free trial",
       "Community support",
     ],
-    priceId: {
-      month: "pri_01m215b0ecq2b4ax936hxkg1zp",
-      year: "pri_01m215b1hh683530gdj8xcc8c1",
-    },
+    priceId: CATALOG.starter,
   },
   {
     id: "pro",
@@ -45,10 +75,7 @@ export const TIERS: Tier[] = [
       "7-day free trial",
       "Email support",
     ],
-    priceId: {
-      month: "pri_01m215b3khx25g48jem5rbk8tb",
-      year: "pri_01m215b4y93q0h63peaj2w7ga6",
-    },
+    priceId: CATALOG.pro,
   },
   {
     id: "advanced",
@@ -64,10 +91,7 @@ export const TIERS: Tier[] = [
       "7-day free trial",
       "Weekly auto-sync",
     ],
-    priceId: {
-      month: "pri_01m215b757n462c86r7tev62vq",
-      year: "pri_01m215b83z0avwsv0va5tdxteq",
-    },
+    priceId: CATALOG.advanced,
     highlight: true,
   },
 ];
