@@ -3,15 +3,40 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+const STORAGE_KEY = "athena.rebrand-alert.dismissed";
+
 export default function RebrandAlertBar() {
-  const [open, setOpen] = useState(true);
+  // null = not hydrated yet (avoid flashing the bar for people who already dismissed)
+  const [open, setOpen] = useState<boolean | null>(null);
 
   useEffect(() => {
+    try {
+      if (window.localStorage.getItem(STORAGE_KEY) === "1") {
+        setOpen(false);
+        return;
+      }
+    } catch {
+      /* private mode / blocked storage — still show once this session */
+    }
+    setOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (open === null) return;
     document.documentElement.style.setProperty("--rebrand-banner-offset", open ? "44px" : "0px");
     return () => {
       document.documentElement.style.setProperty("--rebrand-banner-offset", "0px");
     };
   }, [open]);
+
+  function dismiss() {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    setOpen(false);
+  }
 
   if (!open) return null;
 
@@ -70,7 +95,7 @@ export default function RebrandAlertBar() {
           </Link>
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={dismiss}
             aria-label="Close alert"
             className="rebrand-alert-close"
             style={{

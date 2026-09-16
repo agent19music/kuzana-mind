@@ -27,12 +27,12 @@ export default function CallToAction() {
             lineHeight: 1.0,
             color: "#f0f0f0",
             marginBottom: "var(--space-4)",
-            maxWidth: 600,
+            maxWidth: 640,
           }}
         >
-          Give your team
+          Keep your corpus
           <br />
-          superpowers.
+          off the open web.
         </h2>
 
         <p
@@ -40,12 +40,13 @@ export default function CallToAction() {
             fontSize: 18,
             color: "rgba(255,255,255,0.5)",
             lineHeight: 1.6,
-            maxWidth: 440,
+            maxWidth: 480,
             marginBottom: "var(--space-8)",
           }}
         >
-          Connect your Google Workspace and Notion. Your organization&apos;s
-          knowledge, one question away.
+          Deploy Athena as the knowledge layer on infrastructure you control.
+          Connect sources, answer with citations, and keep sensitive documents
+          out of consumer AI products.
         </p>
 
         <Link
@@ -75,7 +76,7 @@ export default function CallToAction() {
             marginTop: "var(--space-4)",
           }}
         >
-          No credit card required. Set up in under 5 minutes.
+          Built for security-conscious teams. Talk to us about self-hosted deployment.
         </p>
       </div>
     </section>

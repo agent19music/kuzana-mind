@@ -201,18 +201,18 @@ function SyncAnimation() {
 const cards = [
   {
     animation: <ConnectAnimation />,
-    title: "Connect your tools",
-    body: "Plug in Google Workspace, Notion, or both. Your docs, wikis, and processes — all indexed in one place for your entire organization.",
+    title: "Connect sources you already trust",
+    body: "Google Workspace, Notion, and uploads — indexed under your controls. Your corpus stays on infrastructure you operate, not scattered across consumer AI accounts.",
   },
   {
     animation: <SearchAnimation />,
-    title: "Instant answers",
-    body: "Your team asks in plain language. Athena surfaces the exact passage from the right document — or routes to the person who knows.",
+    title: "Answers with provenance",
+    body: "Teams ask in plain language and get cited passages from the right document — or the person accountable. Useful for decisions, not open-ended chat.",
   },
   {
     animation: <SyncAnimation />,
-    title: "Always current",
-    body: "Automatic weekly sync keeps your knowledge base fresh. No manual uploads, no stale answers. Edit a doc and it's reflected everywhere.",
+    title: "Built for governance",
+    body: "Scheduled sync keeps the index current without shadow IT. Policies and playbooks stay discoverable inside your security perimeter.",
   },
 ];
 
@@ -262,7 +262,7 @@ export default function FeaturesSection() {
             maxWidth: 500,
           }}
         >
-          Everything your team needs to stop searching and start knowing.
+          Infrastructure for teams that treat internal knowledge as sensitive.
         </motion.h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-3" style={{ gap: "var(--space-6)" }}>

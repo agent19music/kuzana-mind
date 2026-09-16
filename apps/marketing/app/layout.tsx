@@ -10,9 +10,9 @@ import RebrandAlertBar from "../components/RebrandAlertBar";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://athena.uzskicorp.agency";
-const title = "Athena — Just ask";
+const title = "Athena — Private knowledge infrastructure";
 const description =
-  "Stop hunting through docs and pinging teammates for answers. Ask Athena — get the exact document or the exact person, instantly.";
+  "Self-hosted knowledge infrastructure for serious teams. Index your documents on compute you control — so proprietary data stays yours, not another feed into consumer AI.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
         url: "/og-image.jpg",
         width: 1200,
         height: 630,
-        alt: "Athena — Just ask.",
+        alt: "Athena — Private knowledge infrastructure.",
       },
     ],
     locale: "en_US",

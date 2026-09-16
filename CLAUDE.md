@@ -12,21 +12,26 @@
 | Drive structure | Confirmed: documents live in Shared Drives (easy to access via API later). |
 | Drive auth strategy | Service account — documented and stubbed now, wired in post-MVP. |
 | Public doc ingestion | Added `PUBLIC_DOC_IDS` env var — fetches any "Anyone with link" Google Doc via export URL, no auth. Demo path. |
-| Document types in scope | Google Docs only → parsed to plain text, header-based chunking. |
+| Document types in scope | Google Docs only → parsed to plain text, header-based chunking. Also Notion, Tally, uploads. |
 | Permissions model | Multi-tenant per org. Each org's chunks are tagged with `org_id`; all queries scoped to it. |
-| Similarity fallback | If score < threshold → query `staff_directory.json`, never hallucinate. |
-| Ingestion schedule | Standalone script, triggered by weekly cron job. |
-| Vector DB — MVP | Docker pgvector (`pgvector/pgvector:pg16`) via docker-compose. Zero cost, runs locally. |
-| Vector DB — Production | Cloud SQL for PostgreSQL 16 with `pgvector` extension. Same SQL, swap `DATABASE_URL`. |
-| Vector DB — Ruled out | Cloud Spanner: no native vector ops, expensive, wrong tool for this use case. |
-| Embedding model | Google Gemini `text-embedding-005` (768 dims). |
-| Similarity threshold | `0.65` (adjusted from 0.75 for better recall). Confirm before production. |
-| Auth — frontend | Clerk v7 (`@clerk/nextjs` v7.5.9). `clerkMiddleware` protects all non-public routes. |
+| Similarity fallback | Honest no-match when below threshold. Global `staff_directory.json` fallback was removed (not org-scoped). |
+| Ingestion schedule | Standalone script / `POST /ingest`, plus product-triggered ingest. |
+| Vector DB — local | Docker pgvector (`pgvector/pgvector:pg16`) via `docker-compose.yml`. |
+| Vector DB — production | Render Postgres 16 + pgvector (`athena-db`, Frankfurt). Same SQL, `DATABASE_URL` on the Render service. |
+| Vector DB — ruled out | Cloud Spanner: no native vector ops. Cloud SQL was the previous production DB (Cloud Run era). |
+| Embedding model | Google Gemini `gemini-embedding-2` (768 dims). |
+| Similarity threshold | `0.65` (env `SIMILARITY_THRESHOLD`). |
+| Auth — frontend | Clerk (`@clerk/nextjs`). `clerkMiddleware` protects non-public routes. |
 | Auth — backend | Clerk JWT (RS256 via JWKS) for user requests; `X-API-Key` for server-to-server (Next.js → backend). |
 | Wallet / Web3 | Thirdweb removed. Avalanche audit trail specced as separate `backend/audit.py` (post-MVP). |
 | Onboarding flow | `/register` → Clerk SignUp → `/onboarding` → POST `/api/orgs` → creates Clerk org + triggers ingest → `/dashboard` |
-| Data sources per org | Each org brings their own Notion integration key + array of public Google Doc URLs. |
-| Feedback forms connector | Tally chosen over building a MCP tool-calling path — Tally's own MCP server (beta) is a live-lookup agent tool, incompatible with Athena's pre-indexed pgvector RAG flow. Built as a REST connector matching Notion/Google Docs: per-org `tally_api_key` + `tally_form_ids`, one document per submission. |
+| Data sources per org | Notion key + root page, public Google Doc URLs, Tally forms, Drive folder, file uploads. |
+| Feedback forms | Tally REST connector (not Tally MCP live-lookup): per-org `tally_api_key` + `tally_form_ids`. |
+| Production host | **Render** (Docker web service `kuzana-mind`). Not Cloud Run. |
+| Deploy switch | GitHub Actions variable `DEPLOY_TARGET`: `render` (live) vs `gcloud` (legacy Cloud Run). See `AGENTS.md`. |
+| Observability | Sentry SDK on the FastAPI app. Discord alerts via incoming webhook in `before_send` (Sentry's Discord integration is paid). |
+| Local backend | Always containerised. `docker compose up` — do not run host `pip`/`uvicorn` as the primary path. |
+| Billing | **Paddle Billing** (USD cards, per seat). Starter $10/user; Pro $40/user; Advanced $120/user (highlighted). Quantity locked to org size via server checkout + lock-checkout. Limits in `backend/billing.py`. Promo `ATHENA-EARLY` grants Pro. No M-Pesa in v1. |
 
 ---
 
@@ -35,28 +40,28 @@
 ### What is real
 - FastAPI backend (`main.py`, `retrieval.py`, `ingest.py`, `auth.py`)
 - pgvector embeddings + similarity search, scoped per org
-- Staff directory fallback logic
-- Next.js chat UI — source citation card + staff contact card
+- Next.js product app (`apps/app`) — chat, dashboard, admin, citations
 - Plain-text chunking pipeline (header-based via LangChain)
 - Public Google Doc ingestion — per-org `public_doc_ids` array
 - Notion ingestion — per-org `notion_api_key` + `notion_root_page_id`
-- Tally ingestion — per-org `tally_api_key` + `tally_form_ids` (form feedback/survey submissions, one document per response)
+- Tally ingestion — per-org `tally_api_key` + `tally_form_ids`
+- File uploads + extraction
 - Clerk auth — sign up, sign in, org creation, JWT-gated backend
-- Onboarding form — org name, logo, Notion keys, Google Doc URLs
+- Onboarding form — org name, logo, connectors
 - Dashboard — org stats, action cards, admin/member role distinction
+- Sentry + Discord error pings (free-plan path)
+- CI deploy toggle: Render (current) or Cloud Run (legacy)
 
 ### What is mocked / post-MVP
-- Google Drive service account connector (flag: `USE_MOCK=true`)
+- Google Drive service account connector (flag: `USE_MOCK=true` for local sample docs)
 - Avalanche on-chain audit trail (spec complete at `docs/specs/avalanche-audit-spec.md`)
 - Notion OAuth Path B (spec complete at `docs/specs/notion-oauth-spec.md`)
-- Staff management UI (`/admin/staff`, invite flow, JSON bulk upload)
-- Admin settings page (`/admin/settings`, re-trigger ingest)
 
 ---
 
 ## UI Design Rules — Absolute Constraints
 
-These apply to every component in `app/`. Violations must be fixed before shipping.
+These apply to every component in `apps/app/` (and remaining `app/` marketing leftovers). Violations must be fixed before shipping.
 
 | Rule | Detail |
 |---|---|
@@ -72,61 +77,32 @@ These apply to every component in `app/`. Violations must be fixed before shippi
 
 ```
 noc-ava/
-├── CLAUDE.md                          # This file
-├── AGENTS.md                          # Next.js version warning
-├── middleware.ts                       # Clerk route protection (clerkMiddleware)
-├── .env.local                         # Frontend + server env vars
+├── CLAUDE.md                 # This file — product / decisions
+├── AGENTS.md                 # How to run, host, and deploy (Render + toggle)
+├── docker-compose.yml        # Local Postgres + backend image
+├── .github/workflows/
+│   ├── deploy-backend.yml    # DEPLOY_TARGET=render | gcloud
+│   └── backend-migrations-check.yml
 │
-├── backend/
-│   ├── CLAUDE.md                      # Backend-specific build notes
-│   ├── main.py                        # FastAPI app, CORS, lifespan, endpoints
-│   ├── auth.py                        # Clerk JWT verification + require_backend_secret dep
-│   ├── retrieval.py                   # pgvector similarity search + fallback logic
-│   ├── ingest.py                      # Ingestion pipeline (Notion / public docs / mock / Drive)
-│   ├── database.py                    # SQLAlchemy models (DocumentChunk, Organization, OrganizationMember)
-│   ├── staff_directory.json           # Static staff fallback data
-│   ├── sample_docs/                   # Local markdown docs (USE_MOCK=true)
+├── backend/                  # FastAPI; production Docker context (Render rootDir)
+│   ├── CLAUDE.md
+│   ├── main.py
+│   ├── billing.py            # Plan catalog, entitlements, capacity checks
+│   ├── paddle.py             # Paddle Billing API + webhook signature
+│   ├── discord_alerts.py     # Sentry before_send → Discord webhook
+│   ├── auth.py
+│   ├── retrieval.py
+│   ├── ingest.py
+│   ├── database.py
+│   ├── Dockerfile
 │   ├── requirements.txt
-│   └── .env                           # Backend env vars
+│   └── .env                  # Local only (gitignored)
 │
-├── app/
-│   ├── layout.tsx                     # ClerkProvider, fonts, global CSS
-│   ├── globals.css                    # Design system CSS variables
-│   ├── page.tsx                       # Landing page
-│   ├── login/page.tsx                 # Clerk SignIn
-│   ├── register/page.tsx              # Clerk SignUp
-│   ├── onboarding/page.tsx            # Org setup form (POST /api/orgs)
-│   ├── dashboard/page.tsx             # Main dashboard (server component, auth-gated)
-│   ├── chat/page.tsx                  # Chat UI (org-scoped via Clerk JWT)
-│   ├── api/
-│   │   ├── chat/route.ts              # Proxy → backend /chat (forwards Bearer token)
-│   │   ├── orgs/route.ts              # Creates Clerk org + triggers backend /ingest
-│   │   └── webhooks/clerk/route.ts    # Clerk webhook receiver (Phase 4)
-│   └── components/
-│       ├── chat/DocumentCard.tsx
-│       ├── chat/StaffCard.tsx
-│       ├── Nav.tsx
-│       ├── CallToAction.tsx
-│       ├── FeaturesSection.tsx
-│       └── Integrations.tsx
+├── apps/
+│   ├── app/                  # Product Next.js (Clerk, chat, admin)
+│   └── marketing/            # Marketing site
 │
-└── docs/                              # All project documentation (see docs/README.md)
-    ├── specs/                         # Feature & integration specs
-    │   ├── auth-and-orgs-spec.md      # Full auth + staff management spec
-    │   ├── avalanche-audit-spec.md    # On-chain audit trail spec
-    │   ├── file-upload-spec.md        # File upload / extraction spec
-    │   ├── google-workspace-spec.md   # Google Drive service-account spec
-    │   └── notion-oauth-spec.md       # Notion OAuth Path B spec
-    ├── planning/                      # Build plans & runbooks
-    │   ├── ENTERPRISE-PIPELINE-PLAN.md
-    │   ├── RESTORE-CLERK.md
-    │   └── DEV-PATH.md                # What's built vs. what's left
-    ├── design/                        # Design language & briefings
-    │   ├── design-guide.md
-    │   ├── mavuno-dsign.md
-    │   └── HELLO-STITCH.md
-    └── product/
-        └── athena-pitch.md            # Pitch deck & scripts
+└── docs/
 ```
 
 ---
@@ -148,24 +124,30 @@ noc-ava/
 
 ---
 
+## Production & deploy
+
+Live backend: Render service **kuzana-mind** (`https://kuzana-mind.onrender.com`), Docker from `backend/`. Database: Render Postgres **athena-db**. Env vars (including `SENTRY_DSN`, `DISCORD_WEBHOOK_URL`) live on the Render service, not in GitHub `--set-env-vars` for the current path.
+
+`DEPLOY_TARGET=render` (repo Actions variable): push to `main` on `backend/**` → `deploy-render` job → Render API deploy. Requires `RENDER_API_KEY` + `RENDER_SERVICE_ID`. Cloud Run job does not run.
+
+`DEPLOY_TARGET=gcloud`: previous Cloud Run + Cloud SQL + Artifact Registry pipeline. Kept in the same workflow; not production.
+
+Local: `docker compose up --build backend`. Details in `AGENTS.md`.
+
 ## Service Account Integration Plan (Post-MVP)
 
-Set `USE_MOCK=false` + `DRIVE_FOLDER_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON` in Cloud Run env vars — the connector code is already in `ingest.py`.
+Set `USE_MOCK=false` + per-org `drive_folder_id` + `GOOGLE_SERVICE_ACCOUNT_JSON` on the **Render** service (or Cloud Run if that path is ever re-enabled). Connector code is in `ingest.py`.
 
 ---
 
 ## Open Stakeholder Questions
 
 ### High Priority
-- Who owns `staff_directory.json`? Is there an existing staff list to seed it?
 - Which Shared Drive folder IDs are in scope for Drive connector?
 
 ### Medium Priority
 - Should source citations link back to the original Google Doc URL?
-- Multi-turn chat or single-shot Q&A for MVP?
-- GCP project ID and region for Cloud Run deployment?
 
 ### Lower Priority (Post-MVP)
 - Soft-delete vs. hard purge when a doc is removed from Drive?
 - Query logging for audit/improvement?
-- `CLERK_WEBHOOK_SECRET` — needed for staff management Phase 4

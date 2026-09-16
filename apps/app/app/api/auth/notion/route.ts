@@ -1,21 +1,46 @@
-import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+import {
+  buildAuthorizeUrl,
+  generateState,
+  notionClientId,
+  notionRedirectUri,
+} from "@/lib/notion-oauth";
 
-export async function GET() {
-  const clientId = process.env.NOTION_CLIENT_ID;
-  const redirectUri = process.env.NOTION_REDIRECT_URI;
+export async function GET(request: NextRequest) {
+  const { userId, orgId, orgRole } = await auth();
+  if (!userId) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+  if (!orgId) {
+    return NextResponse.redirect(new URL("/onboarding", request.url));
+  }
+  if (orgRole !== "org:admin") {
+    return NextResponse.json({ error: "Admin only" }, { status: 403 });
+  }
 
-  if (!clientId || !redirectUri) {
+  const clientId = notionClientId();
+  const redirectUri = notionRedirectUri(request.nextUrl.origin);
+  if (!clientId) {
     return NextResponse.json(
-      { error: "Notion OAuth is not configured" },
-      { status: 500 }
+      { error: "NOTION_CLIENT_ID is not set" },
+      { status: 500 },
     );
   }
 
-  const url = new URL("https://api.notion.com/v1/oauth/authorize");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("owner", "user");
-  url.searchParams.set("redirect_uri", redirectUri);
+  const state = generateState();
+  const authorizeUrl = buildAuthorizeUrl({ clientId, redirectUri, state });
 
-  return NextResponse.redirect(url.toString());
+  const res = NextResponse.redirect(authorizeUrl);
+  const cookieOpts = {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 600,
+  };
+  res.cookies.set("notion_oauth_state", state, cookieOpts);
+  res.cookies.set("notion_oauth_org", orgId, cookieOpts);
+  res.cookies.set("notion_oauth_redirect", redirectUri, cookieOpts);
+  return res;
 }

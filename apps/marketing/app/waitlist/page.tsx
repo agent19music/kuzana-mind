@@ -90,7 +90,7 @@ export default function Waitlist() {
               marginBottom: "var(--space-8)",
             }}
           >
-            Get early access to Athena and empower your team with an instant second brain.
+            Get early access to Athena — private, self-hosted knowledge infrastructure for teams that will not hand their documents to consumer AI.
           </p>
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>

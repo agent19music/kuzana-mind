@@ -52,38 +52,61 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Send config to backend — stores org record and triggers first ingest
-  const ingestBody = {
-    org_id: orgId,
-    org_name: name,
-    org_logo_url: logoUrl?.trim() || null,
-    notion_api_key: notionApiKey?.trim() || null,
-    notion_root_page_id: notionRootPageId?.trim() || null,
-    public_doc_ids: Array.isArray(publicDocIds) ? publicDocIds.filter(Boolean) : [],
-    tally_api_key: tallyApiKey?.trim() || null,
-    tally_form_ids: Array.isArray(tallyFormIds) ? tallyFormIds.filter(Boolean) : [],
-    trigger: "onboarding",
-  };
+  // Persist org on the backend. Only kick off ingest when onboarding actually
+  // supplied sources — otherwise create_ingest_job would open an empty "running"
+  // job for nothing. The ensure endpoint (same /ingest with no sources still
+  // needs an org row) is handled by POST /organizations/ensure below.
+  const notionKey = notionApiKey?.trim() || null;
+  const notionRoot = notionRootPageId?.trim() || null;
+  const docs = Array.isArray(publicDocIds) ? publicDocIds.filter(Boolean) : [];
+  const tallyKey = tallyApiKey?.trim() || null;
+  const tallyForms = Array.isArray(tallyFormIds) ? tallyFormIds.filter(Boolean) : [];
+  const hasSources = Boolean(
+    (notionKey && notionRoot) || docs.length > 0 || (tallyKey && tallyForms.length > 0),
+  );
 
   const backendApiSecret = process.env.BACKEND_API_SECRET ?? "";
+  const backendHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(backendApiSecret ? { "X-API-Key": backendApiSecret } : {}),
+  };
 
   try {
-    const res = await fetch(`${BACKEND_URL}/ingest`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(backendApiSecret ? { "X-API-Key": backendApiSecret } : {}),
-      },
-      body: JSON.stringify(ingestBody),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`Ingest failed for org ${orgId}:`, text);
-      // Don't fail the whole onboarding — org is created, ingest can be retried
+    if (hasSources) {
+      const res = await fetch(`${BACKEND_URL}/ingest`, {
+        method: "POST",
+        headers: backendHeaders,
+        body: JSON.stringify({
+          org_id: orgId,
+          org_name: name,
+          org_logo_url: logoUrl?.trim() || null,
+          notion_api_key: notionKey,
+          notion_root_page_id: notionRoot,
+          public_doc_ids: docs,
+          tally_api_key: tallyKey,
+          tally_form_ids: tallyForms,
+          trigger: "onboarding",
+        }),
+      });
+      if (!res.ok) {
+        console.error(`Ingest failed for org ${orgId}:`, await res.text());
+      }
+    } else {
+      const res = await fetch(`${BACKEND_URL}/organizations/ensure`, {
+        method: "POST",
+        headers: backendHeaders,
+        body: JSON.stringify({
+          org_id: orgId,
+          org_name: name,
+          org_logo_url: logoUrl?.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        console.error(`Ensure org failed for ${orgId}:`, await res.text());
+      }
     }
   } catch (err) {
-    console.error("Could not reach backend for ingest:", err);
+    console.error("Could not reach backend during onboarding:", err);
   }
 
   // Mark this org as fully onboarded

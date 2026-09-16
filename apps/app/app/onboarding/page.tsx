@@ -4,7 +4,7 @@ import { useClerk, useOrganization } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/Button";
 import PageFadeIn from "@/components/PageFadeIn";
 
@@ -21,24 +21,6 @@ const inputStyle = (focused: boolean): React.CSSProperties => ({
   outline: "none",
   fontFamily: "var(--font-sans)",
   transition: "border-color 150ms ease-out",
-  boxSizing: "border-box",
-});
-
-const textareaStyle = (focused: boolean): React.CSSProperties => ({
-  width: "100%",
-  borderRadius: "var(--radius-md)",
-  border: `1px solid ${focused ? "var(--foreground)" : "var(--border-strong)"}`,
-  background: "var(--background)",
-  color: "var(--foreground)",
-  fontSize: 14,
-  fontWeight: 400,
-  padding: "var(--space-3) var(--space-4)",
-  outline: "none",
-  fontFamily: "var(--font-sans)",
-  transition: "border-color 150ms ease-out",
-  resize: "vertical",
-  minHeight: 96,
-  lineHeight: 1.6,
   boxSizing: "border-box",
 });
 
@@ -75,13 +57,26 @@ function Field({
   );
 }
 
+async function finishOnboarding(body: Record<string, unknown>) {
+  const res = await fetch("/api/orgs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error ?? "Something went wrong. Please try again.");
+  }
+  return data as { isNew?: boolean; org_id?: string };
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { setActive } = useClerk();
   const { organization, isLoaded } = useOrganization();
+  const autoSkipStarted = useRef(false);
 
-  // If this org is already fully onboarded, skip straight to dashboard.
-  // We only redirect once Clerk has loaded — prevents the flash.
+  // Already onboarded → dashboard.
   useEffect(() => {
     if (!isLoaded) return;
     if (organization?.publicMetadata?.onboarded === true) {
@@ -89,95 +84,77 @@ export default function OnboardingPage() {
     }
   }, [isLoaded, organization, router]);
 
-  // Pre-fill org name if Clerk's sign-up UI already created the org
+  // Org exists but not marked onboarded → finish without the old "connect sources" step.
+  useEffect(() => {
+    if (!isLoaded || !organization) return;
+    if (organization.publicMetadata?.onboarded === true) return;
+    if (autoSkipStarted.current) return;
+    autoSkipStarted.current = true;
+
+    (async () => {
+      try {
+        await finishOnboarding({
+          orgName: organization.name,
+          logoUrl: null,
+          notionApiKey: null,
+          notionRootPageId: null,
+          publicDocIds: [],
+          tallyApiKey: null,
+          tallyFormIds: [],
+        });
+        router.replace("/admin/billing?welcome=1");
+      } catch {
+        // Fall through to a minimal org card if auto-skip fails.
+        autoSkipStarted.current = false;
+      }
+    })();
+  }, [isLoaded, organization, router]);
+
   const [orgName, setOrgName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
-  const [notionApiKey, setNotionApiKey] = useState("");
-  const [notionRootPageId, setNotionRootPageId] = useState("");
-  const [publicDocUrls, setPublicDocUrls] = useState("");
-  const [tallyApiKey, setTallyApiKey] = useState("");
-  const [tallyFormIds, setTallyFormIds] = useState("");
+  const [focused, setFocused] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Sync org name from Clerk when it loads
   useEffect(() => {
     if (isLoaded && organization?.name && !orgName) {
       setOrgName(organization.name);
     }
   }, [isLoaded, organization, orgName]);
 
-  const [focused, setFocused] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Don't render anything until Clerk has loaded — prevents the flash
   if (!isLoaded) return null;
-
-  // If org is onboarded, useEffect will redirect — render nothing in the meantime
   if (organization?.publicMetadata?.onboarded === true) return null;
+
+  // Existing org: show nothing while we auto-skip to the dashboard.
+  if (organization) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
 
-    const publicDocIds = publicDocUrls
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const tallyFormIdList = tallyFormIds
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
     try {
-      const res = await fetch("/api/orgs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgName: orgName.trim(),
-          logoUrl: logoUrl || null,
-          notionApiKey: notionApiKey || null,
-          notionRootPageId: notionRootPageId || null,
-          publicDocIds,
-          tallyApiKey: tallyApiKey || null,
-          tallyFormIds: tallyFormIdList,
-        }),
+      const data = await finishOnboarding({
+        orgName: orgName.trim(),
+        logoUrl: logoUrl || null,
+        notionApiKey: null,
+        notionRootPageId: null,
+        publicDocIds: [],
+        tallyApiKey: null,
+        tallyFormIds: [],
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? "Something went wrong. Please try again.");
-        return;
-      }
-
-      // If we just created a new org, activate it in the session before navigating.
-      // Without this the dashboard sees no orgId and redirects back here.
-      if (data.isNew) {
+      if (data.isNew && data.org_id) {
         await setActive({ organization: data.org_id });
       }
 
-      router.push("/dashboard");
-    } catch {
-      setError("Could not connect. Check your internet and try again.");
+      router.push("/admin/billing?welcome=1");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not connect. Check your internet and try again.");
     } finally {
       setSubmitting(false);
     }
   }
-
-  const hasExistingOrg = !!organization;
-
-  // Whether the user has filled in at least one knowledge source. Drives the
-  // existing-org CTA: nothing filled → "Skip" (go straight to the dashboard,
-  // connect sources later); at least one → "Connect sources".
-  const hasAnySource = !!(
-    notionApiKey.trim() ||
-    notionRootPageId.trim() ||
-    publicDocUrls.trim() ||
-    tallyApiKey.trim() ||
-    tallyFormIds.trim()
-  );
 
   return (
     <div
@@ -200,7 +177,6 @@ export default function OnboardingPage() {
           gap: "var(--space-8)",
         }}
       >
-        {/* Logo */}
         <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
           <Image src="/athena-mind-logo.png" alt="Athena" width={36} height={36} />
           <span style={{ fontSize: 15, letterSpacing: "-0.01em", color: "var(--foreground)" }}>
@@ -208,7 +184,6 @@ export default function OnboardingPage() {
           </span>
         </Link>
 
-        {/* Card */}
         <div
           style={{
             background: "var(--surface)",
@@ -226,7 +201,7 @@ export default function OnboardingPage() {
               fontFamily: "var(--font-sans)",
             }}
           >
-            {hasExistingOrg ? "Connect your knowledge sources" : "Set up your organisation"}
+            Set up your organisation
           </h1>
           <p
             style={{
@@ -237,147 +212,34 @@ export default function OnboardingPage() {
               fontFamily: "var(--font-sans)",
             }}
           >
-            {hasExistingOrg
-              ? `${organization.name} is ready. Add your Notion, Google Docs, or Tally forms to start answering questions.`
-              : "Connect your knowledge sources. You can update these anytime from settings."}
+            Name your workspace. Next you will start a 7-day free trial — then you can connect sources and upload files.
           </p>
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
-            {/* Org name — only if no existing org */}
-            {!hasExistingOrg && (
-              <Field label="Organisation name">
-                <input
-                  type="text"
-                  required
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  onFocus={() => setFocused("orgName")}
-                  onBlur={() => setFocused(null)}
-                  placeholder="Acme Corp"
-                  style={inputStyle(focused === "orgName")}
-                />
-              </Field>
-            )}
+            <Field label="Organisation name">
+              <input
+                type="text"
+                required
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                onFocus={() => setFocused("orgName")}
+                onBlur={() => setFocused(null)}
+                placeholder="Acme Corp"
+                style={inputStyle(focused === "orgName")}
+              />
+            </Field>
 
-            {/* Logo — only if no existing org */}
-            {!hasExistingOrg && (
-              <Field label="Logo URL" optional hint="Paste a public image URL. PNG or SVG works best.">
-                <input
-                  type="url"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  onFocus={() => setFocused("logo")}
-                  onBlur={() => setFocused(null)}
-                  placeholder="https://acme.com/logo.png"
-                  style={inputStyle(focused === "logo")}
-                />
-              </Field>
-            )}
-
-            {/* Knowledge sources */}
-            <div
-              style={{
-                borderTop: hasExistingOrg ? "none" : "1px solid var(--border)",
-                paddingTop: hasExistingOrg ? 0 : "var(--space-6)",
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--space-6)",
-              }}
-            >
-              {!hasExistingOrg && (
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: "var(--foreground-subtle)",
-                    fontFamily: "var(--font-sans)",
-                    marginTop: "calc(-1 * var(--space-6))",
-                    marginBottom: 0,
-                  }}
-                >
-                  Knowledge sources
-                </p>
-              )}
-
-              <Field
-                label="Notion API key"
-                optional
-                hint="Create an internal integration at notion.so/my-integrations and share your root page with it."
-              >
-                <input
-                  type="password"
-                  value={notionApiKey}
-                  onChange={(e) => setNotionApiKey(e.target.value)}
-                  onFocus={() => setFocused("notionKey")}
-                  onBlur={() => setFocused(null)}
-                  placeholder="ntn_..."
-                  style={inputStyle(focused === "notionKey")}
-                  autoComplete="off"
-                />
-              </Field>
-
-              <Field
-                label="Notion root page ID"
-                optional
-                hint="The 32-character ID from the page URL — the part after the last dash."
-              >
-                <input
-                  type="text"
-                  value={notionRootPageId}
-                  onChange={(e) => setNotionRootPageId(e.target.value)}
-                  onFocus={() => setFocused("notionRoot")}
-                  onBlur={() => setFocused(null)}
-                  placeholder="a1b2c3d4e5f6..."
-                  style={inputStyle(focused === "notionRoot")}
-                />
-              </Field>
-
-              <Field
-                label="Public Google Doc URLs"
-                optional
-                hint="One URL or doc ID per line. Docs must be shared as 'Anyone with the link can view'."
-              >
-                <textarea
-                  value={publicDocUrls}
-                  onChange={(e) => setPublicDocUrls(e.target.value)}
-                  onFocus={() => setFocused("docs")}
-                  onBlur={() => setFocused(null)}
-                  placeholder={"https://docs.google.com/document/d/...\nhttps://docs.google.com/document/d/..."}
-                  style={textareaStyle(focused === "docs")}
-                />
-              </Field>
-
-              <Field
-                label="Tally API key"
-                optional
-                hint="Create a personal access token at tally.so/settings/api to pull form feedback."
-              >
-                <input
-                  type="password"
-                  value={tallyApiKey}
-                  onChange={(e) => setTallyApiKey(e.target.value)}
-                  onFocus={() => setFocused("tallyKey")}
-                  onBlur={() => setFocused(null)}
-                  placeholder="tly-..."
-                  style={inputStyle(focused === "tallyKey")}
-                  autoComplete="off"
-                />
-              </Field>
-
-              <Field
-                label="Tally form IDs"
-                optional
-                hint="One form ID per line — staff can then ask about feedback and responses from these forms."
-              >
-                <textarea
-                  value={tallyFormIds}
-                  onChange={(e) => setTallyFormIds(e.target.value)}
-                  onFocus={() => setFocused("tallyForms")}
-                  onBlur={() => setFocused(null)}
-                  placeholder={"wQpQ8j\nmexJoq"}
-                  style={textareaStyle(focused === "tallyForms")}
-                />
-              </Field>
-            </div>
+            <Field label="Logo URL" optional hint="Paste a public image URL. PNG or SVG works best.">
+              <input
+                type="url"
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+                onFocus={() => setFocused("logo")}
+                onBlur={() => setFocused(null)}
+                placeholder="https://acme.com/logo.png"
+                style={inputStyle(focused === "logo")}
+              />
+            </Field>
 
             {error && (
               <p style={{ fontSize: 13, color: "#dc2626", fontFamily: "var(--font-sans)", margin: 0 }}>
@@ -387,18 +249,12 @@ export default function OnboardingPage() {
 
             <Button
               type="submit"
-              disabled={submitting || (!hasExistingOrg && !orgName.trim())}
+              disabled={submitting || !orgName.trim()}
               variant="primary-dark"
               size="lg"
               full
             >
-              {submitting
-                ? hasExistingOrg
-                  ? hasAnySource ? "Connecting…" : "Skipping…"
-                  : "Creating organisation…"
-                : hasExistingOrg
-                  ? hasAnySource ? "Connect sources" : "Skip"
-                  : "Create organisation"}
+              {submitting ? "Creating organisation…" : "Create organisation"}
             </Button>
           </form>
         </div>

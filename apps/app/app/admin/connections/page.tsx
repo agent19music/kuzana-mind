@@ -6,7 +6,13 @@ import ConnectionsClient from "./ConnectionsClient";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-type OrgStats = { chunk_count: number; last_synced: string | null; source_types: string[] };
+type OrgStats = {
+  chunk_count: number;
+  last_synced: string | null;
+  source_types: string[];
+  plan?: string;
+  limits?: { drive?: boolean; source_types?: number | null };
+};
 type Job = {
   id: string;
   status: string;
@@ -22,6 +28,10 @@ export type ConnectorState = {
   status: "connected" | "partial" | "disconnected" | "syncing" | "error";
   chunk_count: number;
   last_synced: string | null;
+  has_forms?: boolean;
+  has_root?: boolean;
+  oauth?: boolean;
+  workspace_name?: string;
 };
 
 export default async function ConnectionsPage() {
@@ -49,6 +59,16 @@ export default async function ConnectionsPage() {
       if (statusRes.ok) jobs = (await statusRes.json()).jobs ?? [];
       if (notifyRes.ok) notifiedIntegrations = (await notifyRes.json()).integrations ?? [];
       if (connRes.ok) connectors = (await connRes.json()).connectors ?? {};
+
+      const entRes = await fetch(`${BACKEND_URL}/billing/entitlement`, {
+        headers,
+        cache: "no-store",
+      });
+      if (entRes.ok) {
+        const ent = await entRes.json();
+        const paid = ent.is_paid === true || ent.source === "paddle" || ent.source === "promo";
+        if (!paid) redirect("/admin/billing?welcome=1");
+      }
     }
   } catch {
     /* backend unreachable — client renders with empty state */

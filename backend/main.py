@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import sentry_sdk
+from discord_alerts import before_send as sentry_before_send
 
 _sentry_dsn = os.getenv("SENTRY_DSN")
 if _sentry_dsn:
@@ -23,6 +24,7 @@ if _sentry_dsn:
         ),
         profile_lifecycle="trace",
         environment=os.getenv("SENTRY_ENVIRONMENT", "development"),
+        before_send=sentry_before_send,
     )
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
@@ -114,9 +116,11 @@ if os.getenv("SENTRY_DEBUG_ROUTE", "").lower() in ("1", "true", "yes"):
 
 @app.get("/stats")
 async def stats(auth_ctx: AuthContext = Depends(require_read_auth)):
+    from billing import usage_snapshot
+    from database import get_session
+
     org_id = auth_ctx.clerk_org_id
     with session_for_org(org_id) as db:
-        chunk_count = db.query(DocumentChunk).filter(DocumentChunk.org_id == org_id).count()
         last_chunk = (
             db.query(DocumentChunk)
             .filter(DocumentChunk.org_id == org_id)
@@ -129,11 +133,19 @@ async def stats(auth_ctx: AuthContext = Depends(require_read_auth)):
             .distinct()
             .all()
         )
+        last_synced = last_chunk.created_at.isoformat() if last_chunk else None
+        indexed_types = [r[0] for r in source_rows if r[0]]
+
+    # Entitlement + usage live outside RLS (org_subscriptions is not tenant-doc
+    # data). Member count comes from organization_members when available.
+    with get_session() as db:
+        usage = usage_snapshot(db, org_id)
 
     return {
-        "chunk_count": chunk_count,
-        "last_synced": last_chunk.created_at.isoformat() if last_chunk else None,
-        "source_types": [r[0] for r in source_rows if r[0]],
+        "chunk_count": usage["chunks"],
+        "last_synced": last_synced,
+        "source_types": indexed_types,
+        **usage,
     }
 
 
@@ -594,7 +606,44 @@ class IngestRequest(BaseModel):
     drive_folder_id: str | None = None
     tally_api_key: str | None = None
     tally_form_ids: list[str] | None = None
+    tally_oauth_refresh_token: str | None = None
+    tally_oauth_expires_in: int | None = None
+    tally_oauth_scope: str | None = None
     trigger: str = "manual"
+
+
+
+class EnsureOrgRequest(BaseModel):
+    org_id: str
+    org_name: str | None = None
+    org_logo_url: str | None = None
+
+
+@app.post("/organizations/ensure")
+async def ensure_organization(
+    request: EnsureOrgRequest,
+    _: None = Depends(require_backend_secret),
+):
+    """Create a minimal organizations row for a Clerk org if missing.
+
+    Used by onboarding when no knowledge sources are connected yet — so we do
+    not open an empty ingest_jobs row, but still satisfy FKs for later writes.
+    """
+    from database import Organization, get_session
+
+    if not request.org_id:
+        raise HTTPException(status_code=400, detail="org_id is required")
+    ensure_organization_exists(request.org_id, request.org_name)
+    if request.org_name or request.org_logo_url:
+        with get_session() as session:
+            org = session.query(Organization).filter_by(clerk_org_id=request.org_id).first()
+            if org:
+                if request.org_name:
+                    org.name = request.org_name
+                if request.org_logo_url:
+                    org.logo_url = request.org_logo_url
+                session.commit()
+    return {"ok": True, "org_id": request.org_id}
 
 
 @app.post("/ingest", status_code=202)
@@ -612,9 +661,47 @@ async def ingest(
     an `ingest_jobs` row (status="running") first thing and flips it to
     completed/failed itself, so progress stays observable via GET /ingest/status.
     """
+    from billing import require_plan_capacity, source_keys_after_ingest
+    from database import Organization, get_session
+
     req = request or IngestRequest()
     if not req.org_id:
         raise HTTPException(status_code=400, detail="org_id is required for ingestion.")
+
+    # Onboarding / first sync can arrive before the Clerk webhook wrote the org
+    # row. ingest_jobs FK requires organizations.clerk_org_id — create it now.
+    ensure_organization_exists(req.org_id, req.org_name)
+
+    # Plan gates: Drive is Pro-only; Starter is capped at 2 connector types.
+    # Checked before we create a job so a blocked connect doesn't leave a
+    # failed/empty ingest_jobs row.
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=req.org_id).first()
+        proposed = source_keys_after_ingest(
+            org,
+            notion_api_key=req.notion_api_key,
+            notion_root_page_id=req.notion_root_page_id,
+            public_doc_ids=req.public_doc_ids,
+            drive_folder_id=req.drive_folder_id,
+            tally_api_key=req.tally_api_key,
+            tally_form_ids=req.tally_form_ids,
+        )
+        if req.drive_folder_id:
+            require_plan_capacity(db, req.org_id, "drive")
+        # Only enforce source-type caps when the request is *adding* connectors,
+        # not on a plain re-index of already-configured sources.
+        adding = any(
+            [
+                req.notion_api_key and req.notion_root_page_id,
+                req.public_doc_ids,
+                req.tally_api_key and req.tally_form_ids,
+                req.drive_folder_id,
+            ]
+        )
+        if adding:
+            require_plan_capacity(
+                db, req.org_id, "add_source", proposed_sources=proposed
+            )
 
     # Create the job row synchronously so the response can carry its id. The
     # client polls that id to know when the sync actually finished — a 202 alone
@@ -633,6 +720,9 @@ async def ingest(
         drive_folder_id=req.drive_folder_id,
         tally_api_key=req.tally_api_key,
         tally_form_ids=req.tally_form_ids,
+        tally_oauth_refresh_token=req.tally_oauth_refresh_token,
+        tally_oauth_expires_in=req.tally_oauth_expires_in,
+        tally_oauth_scope=req.tally_oauth_scope,
         trigger=req.trigger,
         job_id=job_id,
     )
@@ -734,9 +824,9 @@ async def connections(auth_ctx: AuthContext = Depends(require_read_auth)):
         org = db.query(Organization).filter_by(clerk_org_id=org_id).first()
 
         configured = {
-            "notion": bool(org and org.notion_api_key and org.notion_root_page_id),
+            "notion": bool(org and org.notion_api_key),
             "google_docs": bool(org and org.public_doc_ids),
-            "tally": bool(org and org.tally_api_key and org.tally_form_ids),
+            "tally": bool(org and org.tally_api_key),
             "drive": bool(org and org.drive_folder_id),
         }
 
@@ -786,12 +876,22 @@ async def connections(auth_ctx: AuthContext = Depends(require_read_auth)):
             # form, or revoked access. This is the one honest use of "partial".
             status = "partial"
 
-        connectors[key] = {
+        entry = {
             "configured": is_configured,
             "status": status,
             "chunk_count": chunk_count,
             "last_synced": row.last_synced.isoformat() if row and row.last_synced else None,
         }
+        if key == "tally":
+            forms = (org.tally_form_ids if org else None) or []
+            entry["has_forms"] = bool(isinstance(forms, list) and any(forms))
+            entry["oauth"] = bool(org and getattr(org, "tally_oauth_refresh_token", None))
+        if key == "notion":
+            entry["has_root"] = bool(org and org.notion_root_page_id)
+            entry["oauth"] = bool(org and getattr(org, "notion_oauth", False))
+            if org and org.notion_workspace_name:
+                entry["workspace_name"] = org.notion_workspace_name
+        connectors[key] = entry
 
     return {
         "connectors": connectors,
@@ -802,6 +902,282 @@ async def connections(auth_ctx: AuthContext = Depends(require_read_auth)):
             "chunks": latest.chunks,
         } if latest else None,
     }
+
+
+
+
+# ---------------------------------------------------------------------------
+# Tally OAuth (Connect without pasted API keys)
+# ---------------------------------------------------------------------------
+
+class TallyOAuthSaveRequest(BaseModel):
+    access_token: str
+    refresh_token: str | None = None
+    expires_in: int | None = None
+    scope: str | None = None
+    form_ids: list[str] | None = None
+    trigger_ingest: bool = True
+
+
+@app.post("/connections/tally/oauth")
+async def save_tally_oauth(
+    body: TallyOAuthSaveRequest,
+    background_tasks: BackgroundTasks,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Persist Tally OAuth tokens for the caller's org and optionally ingest."""
+    from datetime import datetime, timedelta, timezone
+
+    from database import Organization, get_session
+    from ingest import create_ingest_job, run_ingestion
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    from billing import require_plan_capacity, source_keys_after_ingest
+
+    access = (body.access_token or "").strip()
+    if not access:
+        raise HTTPException(status_code=400, detail="access_token required")
+
+    form_ids = [f.strip() for f in (body.form_ids or []) if isinstance(f, str) and f.strip()]
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        proposed = source_keys_after_ingest(
+            org,
+            tally_api_key=access,
+            tally_form_ids=form_ids or (org.tally_form_ids if org else None),
+        )
+        require_plan_capacity(
+            db, auth_ctx.clerk_org_id, "add_source", proposed_sources=proposed
+        )
+        if not org:
+            org = Organization(
+                clerk_org_id=auth_ctx.clerk_org_id,
+                name="Unnamed Organisation",
+            )
+            db.add(org)
+        org.tally_api_key = access
+        if body.refresh_token:
+            org.tally_oauth_refresh_token = body.refresh_token.strip()
+        if body.scope:
+            org.tally_oauth_scope = body.scope.strip()
+        if body.expires_in and body.expires_in > 0:
+            org.tally_oauth_expires_at = datetime.now(timezone.utc) + timedelta(
+                seconds=int(body.expires_in)
+            )
+        if form_ids:
+            org.tally_form_ids = form_ids
+        db.commit()
+
+    job_id = None
+    if body.trigger_ingest and form_ids:
+        job_id = create_ingest_job(auth_ctx.clerk_org_id, "tally_oauth")
+        background_tasks.add_task(
+            run_ingestion,
+            org_id=auth_ctx.clerk_org_id,
+            tally_api_key=access,
+            tally_form_ids=form_ids,
+            tally_oauth_refresh_token=body.refresh_token,
+            tally_oauth_expires_in=body.expires_in,
+            tally_oauth_scope=body.scope,
+            trigger="tally_oauth",
+            job_id=job_id,
+        )
+
+    return {
+        "ok": True,
+        "has_forms": bool(form_ids),
+        "form_count": len(form_ids),
+        "job_id": str(job_id) if job_id else None,
+    }
+
+
+@app.get("/connections/tally/forms")
+async def list_tally_forms(auth_ctx: AuthContext = Depends(require_auth)):
+    """List Tally forms for the org using the stored OAuth/PAT token."""
+    from database import Organization, get_session
+    import tally_oauth
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org or not org.tally_api_key:
+            raise HTTPException(status_code=400, detail="Tally is not connected")
+        try:
+            token = tally_oauth.ensure_fresh_tally_token(org)
+            db.commit()
+        except tally_oauth.TallyOAuthError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    try:
+        forms = tally_oauth.list_forms(token or org.tally_api_key)
+    except tally_oauth.TallyOAuthError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    slim = []
+    for f in forms:
+        if not isinstance(f, dict):
+            continue
+        fid = f.get("id") or f.get("formId")
+        if not fid:
+            continue
+        slim.append(
+            {
+                "id": fid,
+                "name": f.get("name") or f.get("title") or fid,
+                "status": f.get("status"),
+            }
+        )
+    return {"forms": slim}
+
+
+
+
+# ---------------------------------------------------------------------------
+# Notion OAuth (Connect without pasted integration token)
+# ---------------------------------------------------------------------------
+
+class NotionOAuthSaveRequest(BaseModel):
+    access_token: str
+    workspace_id: str | None = None
+    workspace_name: str | None = None
+    root_page_id: str | None = None
+    trigger_ingest: bool = True
+
+
+@app.post("/connections/notion/oauth")
+async def save_notion_oauth(
+    body: NotionOAuthSaveRequest,
+    background_tasks: BackgroundTasks,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Persist Notion OAuth token for the caller's org and optionally ingest."""
+    from database import Organization, get_session
+    from ingest import create_ingest_job, run_ingestion
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    from billing import require_plan_capacity, source_keys_after_ingest
+
+    access = (body.access_token or "").strip()
+    if not access:
+        raise HTTPException(status_code=400, detail="access_token required")
+
+    root = (body.root_page_id or "").strip() or None
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        root_for_gate = root or (org.notion_root_page_id if org else None)
+        proposed = source_keys_after_ingest(
+            org,
+            notion_api_key=access,
+            notion_root_page_id=root_for_gate,
+        )
+        require_plan_capacity(
+            db, auth_ctx.clerk_org_id, "add_source", proposed_sources=proposed
+        )
+        if not org:
+            org = Organization(
+                clerk_org_id=auth_ctx.clerk_org_id,
+                name="Unnamed Organisation",
+            )
+            db.add(org)
+        org.notion_api_key = access
+        org.notion_oauth = True
+        if body.workspace_id:
+            org.notion_workspace_id = body.workspace_id.strip()
+        if body.workspace_name:
+            org.notion_workspace_name = body.workspace_name.strip()
+        if root:
+            org.notion_root_page_id = root
+        db.commit()
+
+    job_id = None
+    if body.trigger_ingest and root:
+        job_id = create_ingest_job(auth_ctx.clerk_org_id, "notion_oauth")
+        background_tasks.add_task(
+            run_ingestion,
+            org_id=auth_ctx.clerk_org_id,
+            notion_api_key=access,
+            notion_root_page_id=root,
+            trigger="notion_oauth",
+            job_id=job_id,
+        )
+
+    return {
+        "ok": True,
+        "has_root": bool(root),
+        "job_id": str(job_id) if job_id else None,
+    }
+
+
+@app.get("/connections/notion/pages")
+async def list_notion_pages(auth_ctx: AuthContext = Depends(require_auth)):
+    """List Notion pages visible to the org's stored OAuth/integration token."""
+    from database import Organization, get_session
+    import notion_oauth
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org or not org.notion_api_key:
+            raise HTTPException(status_code=400, detail="Notion is not connected")
+        token = org.notion_api_key
+
+    try:
+        pages = notion_oauth.search_pages(token)
+    except notion_oauth.NotionOAuthError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    return {"pages": pages}
+
+
+@app.post("/connections/notion/root")
+async def set_notion_root(
+    body: dict,
+    background_tasks: BackgroundTasks,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Set the Notion root page id after OAuth and optionally ingest."""
+    from database import Organization, get_session
+    from ingest import create_ingest_job, run_ingestion
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    root = (body.get("root_page_id") or "").strip()
+    if not root:
+        raise HTTPException(status_code=400, detail="root_page_id required")
+    trigger_ingest = body.get("trigger_ingest", True)
+
+    with get_session() as db:
+        org = db.query(Organization).filter_by(clerk_org_id=auth_ctx.clerk_org_id).first()
+        if not org or not org.notion_api_key:
+            raise HTTPException(status_code=400, detail="Notion is not connected")
+        org.notion_root_page_id = root
+        token = org.notion_api_key
+        db.commit()
+
+    job_id = None
+    if trigger_ingest:
+        job_id = create_ingest_job(auth_ctx.clerk_org_id, "notion_root")
+        background_tasks.add_task(
+            run_ingestion,
+            org_id=auth_ctx.clerk_org_id,
+            notion_api_key=token,
+            notion_root_page_id=root,
+            trigger="notion_root",
+            job_id=job_id,
+        )
+
+    return {"ok": True, "root_page_id": root, "job_id": str(job_id) if job_id else None}
 
 
 # ---------------------------------------------------------------------------
@@ -822,6 +1198,8 @@ async def upload_files(
     """
     import mimetypes
     from pathlib import Path
+    from billing import require_plan_capacity
+    from database import get_session
     from ingest import chunk_document, namespaced_doc_id
 
     org_id = auth_ctx.clerk_org_id
@@ -834,6 +1212,31 @@ async def upload_files(
     total_size = sum(f.size or 0 for f in files)
     if total_size > MAX_TOTAL_BYTES:
         raise HTTPException(400, "Total upload exceeds 150 MB")
+
+    # Plan gate before we spend CPU on extraction/embedding. Counts new
+    # filenames that aren't already indexed as uploads for this org.
+    from database import DocumentFile
+    from ingest import namespaced_doc_id as _ns
+
+    candidate_names = []
+    for file in files:
+        ext = Path(file.filename or "").suffix.lower()
+        if ext in SUPPORTED and file.filename:
+            candidate_names.append(file.filename)
+
+    with get_session() as db:
+        new_file_count = 0
+        for name in candidate_names:
+            doc_id = _ns("upload", org_id, name)
+            exists = (
+                db.query(DocumentFile)
+                .filter_by(org_id=org_id, doc_id=doc_id, source_type="upload")
+                .first()
+            )
+            if not exists:
+                new_file_count += 1
+        if new_file_count:
+            require_plan_capacity(db, org_id, "upload_files", extra_files=new_file_count)
 
     docs = []
     skipped = []
@@ -899,6 +1302,43 @@ async def upload_files(
     for doc in docs:
         all_chunks.extend(chunk_document(doc))
 
+    # Chunk quota — reject before embedding if post-upsert total would overflow.
+    with get_session() as db:
+        from billing import resolve_entitlement
+        from sqlalchemy import func as sa_func
+
+        doc_ids = [d["doc_id"] for d in docs]
+        current = (
+            db.query(sa_func.count(DocumentChunk.id))
+            .filter(DocumentChunk.org_id == org_id)
+            .scalar()
+            or 0
+        )
+        old_for = (
+            db.query(sa_func.count(DocumentChunk.id))
+            .filter(DocumentChunk.org_id == org_id, DocumentChunk.doc_id.in_(doc_ids))
+            .scalar()
+            or 0
+        )
+        projected = current - old_for + len(all_chunks)
+        ent = resolve_entitlement(db, org_id)
+        if projected > ent.limits.chunks:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "plan_limit",
+                    "limit_name": "chunks",
+                    "used": current,
+                    "limit": ent.limits.chunks,
+                    "plan": ent.plan,
+                    "upgrade_path": "/admin/billing",
+                    "message": (
+                        f"Chunk limit reached on the {ent.limits.name} plan."
+                        + (" Upgrade to continue." if ent.plan == "starter" else "")
+                    ),
+                },
+            )
+
     embeddings = await embed_documents([c["chunk_text"] for c in all_chunks])
 
     seen_docs: set[str] = set()
@@ -948,6 +1388,271 @@ async def upload_files(
 
 
 # ---------------------------------------------------------------------------
+# Billing (Paddle + promo entitlements)
+# ---------------------------------------------------------------------------
+
+class RedeemRequest(BaseModel):
+    code: str
+
+
+@app.get("/billing/entitlement")
+async def billing_entitlement(auth_ctx: AuthContext = Depends(require_read_auth)):
+    from billing import usage_snapshot
+    from database import get_session
+
+    with get_session() as db:
+        return usage_snapshot(db, auth_ctx.clerk_org_id)
+
+
+class CheckoutRequest(BaseModel):
+    plan: str = "pro"
+    interval: str = "month"
+    quantity: int | None = None
+
+
+class LockCheckoutRequest(BaseModel):
+    transaction_id: str
+
+
+@app.post("/billing/checkout")
+async def billing_checkout(
+    body: CheckoutRequest | None = None,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Create a Paddle transaction for overlay checkout (org admin)."""
+    import paddle as paddle_api
+    from billing import PLANS, count_members, resolve_entitlement
+    from database import get_session
+
+    req = body or CheckoutRequest()
+    plan = (req.plan or "pro").lower()
+    if plan == "plus":
+        plan = "advanced"
+    if plan not in ("starter", "pro", "advanced"):
+        raise HTTPException(status_code=400, detail="Plan must be starter, pro, or advanced.")
+    interval = "year" if (req.interval or "month") == "year" else "month"
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    if not paddle_api.configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Billing is not configured. Set PADDLE_API_KEY and a price id.",
+        )
+
+    ensure_organization_exists(auth_ctx.clerk_org_id)
+
+    with get_session() as db:
+        ent = resolve_entitlement(db, auth_ctx.clerk_org_id)
+        if (
+            ent.is_paid
+            and ent.source == "paddle"
+            and ent.status in ("active", "trialing")
+            and ent.plan == plan
+        ):
+            raise HTTPException(status_code=400, detail=f"Already subscribed to {ent.limits.name}.")
+        db_seats = max(1, count_members(db, auth_ctx.clerk_org_id) or 1)
+        customer_id = ent.paddle_customer_id
+
+    clerk_seats = max(1, int(req.quantity)) if req.quantity else None
+    # Clerk memberships are the source of truth (Team page). Local
+    # organization_members lags when webhooks are missing.
+    seats = clerk_seats if clerk_seats is not None else db_seats
+    seats = min(max(1, seats), PLANS[plan].seats)
+
+    try:
+        txn = paddle_api.create_checkout_transaction(
+            quantity=seats,
+            clerk_org_id=auth_ctx.clerk_org_id,
+            plan=plan,
+            interval=interval,
+            paddle_customer_id=customer_id,
+        )
+    except paddle_api.PaddleError as e:
+        print(f"Paddle checkout error: {e} body={e.body}")
+        raise HTTPException(status_code=502, detail="Could not start Paddle checkout.")
+
+    return {
+        "transaction_id": txn.get("id"),
+        "quantity": seats,
+        "plan": plan,
+        "interval": interval,
+        "client_token": os.getenv("PADDLE_CLIENT_TOKEN", "") or None,
+        "environment": os.getenv("PADDLE_ENVIRONMENT", "sandbox"),
+        "price_id": paddle_api.price_id_for_plan(plan, interval),
+    }
+
+
+@app.post("/billing/lock-checkout")
+async def billing_lock_checkout(
+    body: LockCheckoutRequest,
+    auth_ctx: AuthContext = Depends(require_auth),
+):
+    """Lock overlay checkout quantity to the org's member count."""
+    import paddle as paddle_api
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    if not paddle_api.configured():
+        raise HTTPException(status_code=503, detail="Billing is not configured.")
+
+    txn_id = (body.transaction_id or "").strip()
+    if not txn_id.startswith("txn_"):
+        raise HTTPException(status_code=400, detail="transaction_id required")
+
+    try:
+        txn = paddle_api.lock_checkout_transaction(
+            txn_id, clerk_org_id=auth_ctx.clerk_org_id
+        )
+    except paddle_api.PaddleError as e:
+        if e.status == 403:
+            raise HTTPException(status_code=403, detail="Not your checkout.")
+        if e.status == 404:
+            raise HTTPException(status_code=404, detail="Checkout not found.")
+        print(f"Paddle lock-checkout error: {e} body={e.body}")
+        raise HTTPException(status_code=502, detail="Could not lock checkout quantity.")
+
+    return {"transaction_id": txn.get("id"), "status": txn.get("status")}
+
+
+@app.post("/billing/cancel")
+async def billing_cancel(auth_ctx: AuthContext = Depends(require_auth)):
+    import paddle as paddle_api
+    from billing import resolve_entitlement
+    from database import get_session
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    with get_session() as db:
+        ent = resolve_entitlement(db, auth_ctx.clerk_org_id)
+        sub_id = ent.paddle_subscription_id
+        if not (ent.source == "paddle" and sub_id):
+            raise HTTPException(status_code=400, detail="No active Paddle subscription to cancel.")
+
+    try:
+        sub = paddle_api.cancel_subscription(sub_id)
+    except paddle_api.PaddleError as e:
+        print(f"Paddle cancel error: {e} body={e.body}")
+        raise HTTPException(status_code=502, detail="Could not cancel subscription.")
+
+    from database import get_session as _gs
+    with _gs() as db:
+        paddle_api.apply_subscription_event(db, sub, clerk_org_id=auth_ctx.clerk_org_id)
+        db.commit()
+
+    return {"status": "ok", "subscription": {"id": sub.get("id"), "status": sub.get("status")}}
+
+
+@app.post("/billing/redeem")
+async def billing_redeem(body: RedeemRequest, auth_ctx: AuthContext = Depends(require_auth)):
+    from billing import redeem_promo, usage_snapshot
+    from database import get_session
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    ensure_organization_exists(auth_ctx.clerk_org_id)
+
+    with get_session() as db:
+        redeem_promo(
+            db,
+            clerk_org_id=auth_ctx.clerk_org_id,
+            clerk_user_id=auth_ctx.clerk_user_id,
+            code=body.code,
+        )
+        return usage_snapshot(db, auth_ctx.clerk_org_id)
+
+
+@app.post("/billing/check-seat")
+async def billing_check_seat(auth_ctx: AuthContext = Depends(require_auth)):
+    """Invite flow: ensure adding one more seat is allowed on the current plan."""
+    from billing import require_plan_capacity
+    from database import get_session
+
+    if not auth_ctx.is_admin:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    with get_session() as db:
+        require_plan_capacity(db, auth_ctx.clerk_org_id, "add_seats", extra_seats=1)
+        return {"ok": True}
+
+
+@app.post("/billing/webhooks/paddle")
+async def paddle_webhook(request: Request):
+    """Paddle Billing webhooks — signature verified on the raw body."""
+    import paddle as paddle_api
+    from database import get_session
+
+    raw = await request.body()
+    sig = request.headers.get("Paddle-Signature") or request.headers.get("paddle-signature")
+    if not paddle_api.verify_webhook_signature(raw, sig):
+        raise HTTPException(status_code=401, detail="Invalid Paddle signature")
+
+    import json
+    try:
+        payload = json.loads(raw.decode() or "{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = payload.get("event_type") or payload.get("eventType") or ""
+    data = payload.get("data") or {}
+    print(f"Paddle webhook: {event_type}")
+
+    with get_session() as db:
+        if event_type.startswith("subscription."):
+            org = paddle_api.apply_subscription_event(db, data)
+            db.commit()
+            return {"received": True, "org_id": org, "type": event_type}
+
+        if event_type == "transaction.completed":
+            # Subscription may already be created; custom_data carries org id.
+            org_id = paddle_api.clerk_org_from_custom_data(data)
+            sub_id = data.get("subscription_id")
+            if sub_id and org_id:
+                try:
+                    sub = paddle_api.get_subscription(sub_id)
+                    # Ensure custom_data is present for apply.
+                    if not paddle_api.clerk_org_from_custom_data(sub):
+                        sub = {**sub, "custom_data": {"clerk_org_id": org_id}}
+                    paddle_api.apply_subscription_event(db, sub, clerk_org_id=org_id)
+                    db.commit()
+                except paddle_api.PaddleError as e:
+                    print(f"Paddle webhook fetch sub failed: {e}")
+            return {"received": True, "org_id": org_id, "type": event_type}
+
+    return {"received": True, "type": event_type}
+
+
+def _sync_paddle_seats(clerk_org_id: str) -> None:
+    """Best-effort: push local member count to Paddle quantity for paid orgs."""
+    import paddle as paddle_api
+    from billing import count_members, resolve_entitlement
+    from database import get_session
+
+    if not paddle_api.configured():
+        return
+    with get_session() as db:
+        ent = resolve_entitlement(db, clerk_org_id)
+        if not (ent.is_paid and ent.source == "paddle" and ent.paddle_subscription_id):
+            return
+        if ent.status not in ("active", "trialing", "past_due"):
+            return
+        seats = max(1, count_members(db, clerk_org_id) or 1)
+        if seats == ent.seats_billed:
+            return
+        sub_id = ent.paddle_subscription_id
+        price_id = paddle_api.price_id_for_plan(ent.plan)
+    try:
+        sub = paddle_api.update_subscription_quantity(sub_id, seats, price_id=price_id)
+        with get_session() as db:
+            paddle_api.apply_subscription_event(db, sub, clerk_org_id=clerk_org_id)
+            db.commit()
+    except paddle_api.PaddleError as e:
+        print(f"Paddle seat sync failed for {clerk_org_id}: {e} body={e.body}")
+
+
+# ---------------------------------------------------------------------------
 # Clerk webhooks — syncs org/member events to local DB
 # ---------------------------------------------------------------------------
 
@@ -973,6 +1678,8 @@ async def clerk_webhook(
 
     def _role_from_clerk(role: str | None) -> str:
         return "admin" if role in ("org:admin", "admin") else "member"
+
+    seat_sync_org: str | None = None
 
     with get_session() as db:
         if event_type in ("organization.created", "organization.updated"):
@@ -1032,6 +1739,7 @@ async def clerk_webhook(
                     role=_role_from_clerk(data.get("role")),
                 ))
             db.commit()
+            seat_sync_org = clerk_org_id
 
         elif event_type == "organizationMembership.deleted":
             org_data = data.get("organization", {}) or {}
@@ -1043,6 +1751,10 @@ async def clerk_webhook(
                     clerk_org_id=clerk_org_id, clerk_user_id=clerk_user_id
                 ).delete()
                 db.commit()
+                seat_sync_org = clerk_org_id
+
+    if seat_sync_org:
+        _sync_paddle_seats(seat_sync_org)
 
     return {"received": True, "type": event_type}
 

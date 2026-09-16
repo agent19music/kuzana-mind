@@ -1,18 +1,18 @@
 const steps = [
   {
     n: "01",
-    label: "Connect your sources",
-    body: "Link your Google Workspace, Notion, or both. We handle permissions and never store raw credentials.",
+    label: "Deploy on your compute",
+    body: "Run Athena where your security team expects it — your cloud, your VPC, your rules. Proprietary knowledge does not need a detour through a consumer AI product.",
   },
   {
     n: "02",
-    label: "We index everything",
-    body: "Your documents are chunked, embedded, and indexed automatically. New content syncs weekly — zero maintenance.",
+    label: "Index inside your perimeter",
+    body: "Connect Google Workspace, Notion, and uploads. Documents are chunked and indexed under your access model, with sync that stays under admin control.",
   },
   {
     n: "03",
-    label: "Your team asks",
-    body: "Anyone on the team can ask in plain language and get the exact answer with a link to the source — or the right person to talk to.",
+    label: "Ask with citations",
+    body: "Staff get grounded answers with links back to source — so decisions stay auditable and knowledge never becomes an anonymous chatbot reply.",
   },
 ];
 
@@ -43,7 +43,7 @@ export default function HowItWorks() {
             marginBottom: "var(--space-12)",
           }}
         >
-          Up and running in minutes.
+          Private by design. Operational in days.
         </h2>
 
         <div

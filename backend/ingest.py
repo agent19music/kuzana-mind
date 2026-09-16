@@ -812,8 +812,13 @@ def create_ingest_job(org_id: str, trigger: str = "manual") -> str:
     handing off to a background task, and return the id to the caller. Without
     that, a client has no handle to poll and can only guess when a sync
     finished — which is why the connections page used to need a hard refresh.
+
+    Ensures the organizations FK target exists first — onboarding often hits
+    /ingest for a brand-new Clerk org before any webhook/row upsert ran, and
+    ingest_jobs.org_id has a NOT NULL FK to organizations.clerk_org_id.
     """
-    from database import IngestJob
+    from database import IngestJob, ensure_organization_exists
+    ensure_organization_exists(org_id)
     with get_session() as session:
         job = IngestJob(org_id=org_id, status="running", trigger=trigger)
         session.add(job)
@@ -831,6 +836,9 @@ async def run_ingestion(
     drive_folder_id: str | None = None,
     tally_api_key: str | None = None,
     tally_form_ids: list[str] | None = None,
+    tally_oauth_refresh_token: str | None = None,
+    tally_oauth_expires_in: int | None = None,
+    tally_oauth_scope: str | None = None,
     trigger: str = "manual",
     job_id: str | None = None,
 ) -> dict:
@@ -863,6 +871,15 @@ async def run_ingestion(
                 org.tally_api_key = tally_api_key
             if tally_form_ids is not None:
                 org.tally_form_ids = tally_form_ids
+            if tally_oauth_refresh_token:
+                org.tally_oauth_refresh_token = tally_oauth_refresh_token
+            if tally_oauth_scope:
+                org.tally_oauth_scope = tally_oauth_scope
+            if tally_oauth_expires_in and tally_oauth_expires_in > 0:
+                from datetime import datetime, timedelta, timezone
+                org.tally_oauth_expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=int(tally_oauth_expires_in)
+                )
         else:
             org = Organization(
                 clerk_org_id=org_id,
@@ -884,6 +901,17 @@ async def run_ingestion(
         eff_drive_folder = drive_folder_id or org.drive_folder_id
         eff_tally_key = tally_api_key or org.tally_api_key
         eff_tally_forms = tally_form_ids if tally_form_ids is not None else org.tally_form_ids
+
+        # Refresh OAuth access token when we have a refresh token on the org.
+        if org and getattr(org, "tally_oauth_refresh_token", None):
+            try:
+                import tally_oauth
+                fresh = tally_oauth.ensure_fresh_tally_token(org)
+                session.commit()
+                if fresh:
+                    eff_tally_key = fresh
+            except Exception as e:
+                print(f"Tally OAuth refresh skipped/failed: {e}")
 
     # Open a job row so status is observable while the run is in flight. The
     # caller may have already created one (see create_ingest_job) so it could

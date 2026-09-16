@@ -1,88 +1,138 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  exchangeCode,
+  notionClientId,
+  notionClientSecret,
+  notionRedirectUri,
+  searchPages,
+} from "@/lib/notion-oauth";
 
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+/**
+ * Exchange Notion OAuth code, persist token on the org, pick a root page when
+ * possible, and kick off ingest when a root is known.
+ */
 export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
-  const code = searchParams.get("code");
-  const error = searchParams.get("error");
-
-  if (error || !code) {
-    return NextResponse.redirect(new URL("/?notion=denied", request.url));
+  const { userId, orgId, getToken } = await auth();
+  if (!userId) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const clientId = process.env.NOTION_CLIENT_ID;
-  const clientSecret = process.env.NOTION_CLIENT_SECRET;
-  const redirectUri = process.env.NOTION_REDIRECT_URI;
-  const rootPageId = process.env.NOTION_ROOT_PAGE_ID ?? "";
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const backendApiSecret = process.env.BACKEND_API_SECRET ?? "";
+  const clearCookies = (res: NextResponse) => {
+    for (const name of [
+      "notion_oauth_state",
+      "notion_oauth_org",
+      "notion_oauth_redirect",
+    ]) {
+      res.cookies.set(name, "", { path: "/", maxAge: 0 });
+    }
+    return res;
+  };
 
-  if (!clientId || !clientSecret || !redirectUri) {
-    return NextResponse.redirect(new URL("/?notion=error", request.url));
-  }
+  const fail = (reason: string) => {
+    const dest = new URL("/admin/connections", request.url);
+    dest.searchParams.set("notion", "error");
+    dest.searchParams.set("reason", reason);
+    return clearCookies(NextResponse.redirect(dest));
+  };
 
-  // Exchange code for access_token
-  let accessToken: string;
-  let workspaceName: string | undefined;
+  const error = request.nextUrl.searchParams.get("error");
+  if (error) return fail(error);
+
+  const code = request.nextUrl.searchParams.get("code");
+  const state = request.nextUrl.searchParams.get("state");
+  const expectedState = request.cookies.get("notion_oauth_state")?.value;
+  const cookieOrg = request.cookies.get("notion_oauth_org")?.value;
+  const redirectUri =
+    request.cookies.get("notion_oauth_redirect")?.value ||
+    notionRedirectUri(request.nextUrl.origin);
+
+  if (!code || !state || !expectedState) return fail("missing_code");
+  if (state !== expectedState) return fail("state_mismatch");
+  if (cookieOrg && orgId && cookieOrg !== orgId) return fail("org_mismatch");
+  if (!orgId) return fail("no_org");
+
+  const clientId = notionClientId();
+  const clientSecret = notionClientSecret();
+  if (!clientId || !clientSecret) return fail("missing_client");
+
+  let tokens;
   try {
-    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    const tokenRes = await fetch("https://api.notion.com/v1/oauth/token", {
+    tokens = await exchangeCode({
+      code,
+      clientId,
+      clientSecret,
+      redirectUri,
+    });
+  } catch (err) {
+    console.error("Notion token exchange failed", err);
+    return fail("token_exchange");
+  }
+
+  const envRoot = (process.env.NOTION_ROOT_PAGE_ID || "").trim();
+  let rootPageId = envRoot;
+  let pageCount = 0;
+  let searchFailed = false;
+
+  try {
+    const pages = await searchPages(tokens.access_token);
+    pageCount = pages.length;
+    if (!rootPageId) {
+      if (pages.length === 1) {
+        rootPageId = pages[0].id;
+      } else if (pages.length > 1) {
+        // Prefer a top-level-ish page: first result as a soft default only when
+        // exactly one page was shared; with many, force an explicit pick.
+        rootPageId = "";
+      }
+    }
+  } catch (err) {
+    console.error("Notion search after OAuth failed", err);
+    searchFailed = true;
+  }
+
+  const clerkToken = await getToken();
+  if (!clerkToken) return fail("no_session");
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/connections/notion/oauth`, {
       method: "POST",
       headers: {
-        Authorization: `Basic ${credentials}`,
+        Authorization: `Bearer ${clerkToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
+        access_token: tokens.access_token,
+        workspace_id: tokens.workspace_id ?? null,
+        workspace_name: tokens.workspace_name ?? null,
+        root_page_id: rootPageId || null,
+        trigger_ingest: Boolean(rootPageId),
       }),
     });
-
-    if (!tokenRes.ok) {
-      console.error("Notion token exchange failed:", await tokenRes.text());
-      return NextResponse.redirect(new URL("/?notion=error", request.url));
-    }
-
-    const tokenData = await tokenRes.json();
-    accessToken = tokenData.access_token;
-    workspaceName = tokenData.workspace_name;
-  } catch (err) {
-    console.error("Notion token exchange error:", err);
-    return NextResponse.redirect(new URL("/?notion=error", request.url));
-  }
-
-  // Get Clerk org_id to scope the ingest
-  const { orgId } = await auth();
-
-  // Trigger ingest — non-blocking on failure
-  let ingestOk = true;
-  try {
-    const ingestRes = await fetch(`${backendUrl}/ingest`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": backendApiSecret,
-      },
-      body: JSON.stringify({
-        org_id: orgId ?? undefined,
-        notion_api_key: accessToken,
-        notion_root_page_id: rootPageId || undefined,
-      }),
-    });
-    if (!ingestRes.ok) {
-      console.error("Ingest after Notion connect failed:", await ingestRes.text());
-      ingestOk = false;
+    if (!res.ok) {
+      console.error("save notion oauth failed", await res.text());
+      return fail("save_failed");
     }
   } catch (err) {
-    console.error("Could not reach backend for ingest:", err);
-    ingestOk = false;
+    console.error("save notion oauth error", err);
+    return fail("save_failed");
   }
 
-  const destination = new URL("/chat", request.url);
-  destination.searchParams.set("connected", "notion");
-  if (workspaceName) destination.searchParams.set("workspace", workspaceName);
-  if (!ingestOk) destination.searchParams.set("ingest", "pending");
-
-  return NextResponse.redirect(destination);
+  const dest = new URL("/admin/connections", request.url);
+  if (rootPageId) {
+    dest.searchParams.set("notion", "connected");
+    if (tokens.workspace_name) {
+      dest.searchParams.set("workspace", tokens.workspace_name);
+    }
+  } else if (searchFailed) {
+    dest.searchParams.set("notion", "pick_root");
+  } else if (pageCount === 0) {
+    dest.searchParams.set("notion", "no_pages");
+  } else {
+    dest.searchParams.set("notion", "pick_root");
+    dest.searchParams.set("pages", String(pageCount));
+  }
+  return clearCookies(NextResponse.redirect(dest));
 }
